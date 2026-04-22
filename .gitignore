@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+web/backend/node_modules/
+web/frontend/node_modules/
+
+# Environment variables (keep secrets out of GitHub)
+.env
+web/backend/.env
+
+# Build output
+web/frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store

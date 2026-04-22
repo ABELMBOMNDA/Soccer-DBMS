@@ -1,0 +1,1494 @@
+-- ===== FILE: code/database/01_schema.sql =====
+DROP DATABASE IF EXISTS epl_dbms;
+CREATE DATABASE epl_dbms;
+USE epl_dbms;
+
+CREATE TABLE seasons (
+    season_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_name VARCHAR(20) NOT NULL UNIQUE,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'UPCOMING',
+    CHECK (end_date > start_date),
+    CHECK (status IN ('UPCOMING', 'ACTIVE', 'COMPLETED'))
+);
+
+CREATE TABLE stadiums (
+    stadium_id INT AUTO_INCREMENT PRIMARY KEY,
+    stadium_name VARCHAR(100) NOT NULL UNIQUE,
+    city VARCHAR(100) NOT NULL,
+    country VARCHAR(100) NOT NULL DEFAULT 'England',
+    capacity INT NOT NULL,
+    CHECK (capacity > 0)
+);
+
+CREATE TABLE clubs (
+    club_id INT AUTO_INCREMENT PRIMARY KEY,
+    club_name VARCHAR(100) NOT NULL UNIQUE,
+    short_name VARCHAR(20) NOT NULL UNIQUE,
+    founded_year INT,
+    manager_name VARCHAR(100) NOT NULL,
+    sponsor_name VARCHAR(100),
+    stadium_id INT NOT NULL,
+    CHECK (founded_year IS NULL OR founded_year BETWEEN 1850 AND 2025),
+    CONSTRAINT fk_club_stadium FOREIGN KEY (stadium_id)
+        REFERENCES stadiums(stadium_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+);
+
+CREATE TABLE positions (
+    position_id INT AUTO_INCREMENT PRIMARY KEY,
+    position_code VARCHAR(10) NOT NULL UNIQUE,
+    position_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE players (
+    player_id INT AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(60) NOT NULL,
+    last_name VARCHAR(60) NOT NULL,
+    date_of_birth DATE NOT NULL,
+    nationality VARCHAR(60) NOT NULL,
+    position_id INT NOT NULL,
+    squad_number INT,
+    preferred_foot VARCHAR(10) NOT NULL DEFAULT 'Right',
+    current_club_id INT,
+    market_value DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    CHECK (squad_number IS NULL OR squad_number BETWEEN 1 AND 99),
+    CHECK (preferred_foot IN ('Right', 'Left', 'Both')),
+    CHECK (market_value >= 0),
+    CONSTRAINT fk_player_position FOREIGN KEY (position_id)
+        REFERENCES positions(position_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_player_club FOREIGN KEY (current_club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+);
+
+CREATE TABLE club_registrations (
+    registration_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_id INT NOT NULL,
+    club_id INT NOT NULL,
+    registration_date DATE NOT NULL,
+    registration_status VARCHAR(20) NOT NULL DEFAULT 'APPROVED',
+    UNIQUE KEY uq_season_club (season_id, club_id),
+    CHECK (registration_status IN ('PENDING', 'APPROVED', 'SUSPENDED')),
+    CONSTRAINT fk_reg_season FOREIGN KEY (season_id)
+        REFERENCES seasons(season_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_reg_club FOREIGN KEY (club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+);
+
+CREATE TABLE fixtures (
+    fixture_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_id INT NOT NULL,
+    matchweek INT NOT NULL,
+    match_date DATETIME NOT NULL,
+    stadium_id INT NOT NULL,
+    home_club_id INT NOT NULL,
+    away_club_id INT NOT NULL,
+    home_score INT DEFAULT 0,
+    away_score INT DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+    attendance INT DEFAULT 0,
+    CHECK (matchweek BETWEEN 1 AND 38),
+    CHECK (home_score >= 0),
+    CHECK (away_score >= 0),
+    CHECK (attendance >= 0),
+    CHECK (status IN ('SCHEDULED', 'COMPLETED', 'POSTPONED', 'CANCELLED')),
+    CONSTRAINT fk_fixture_season FOREIGN KEY (season_id)
+        REFERENCES seasons(season_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_fixture_stadium FOREIGN KEY (stadium_id)
+        REFERENCES stadiums(stadium_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_fixture_home FOREIGN KEY (home_club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_fixture_away FOREIGN KEY (away_club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+);
+
+CREATE TABLE match_events (
+    event_id INT AUTO_INCREMENT PRIMARY KEY,
+    fixture_id INT NOT NULL,
+    minute_mark INT NOT NULL,
+    event_type VARCHAR(20) NOT NULL,
+    club_id INT NOT NULL,
+    player_id INT NOT NULL,
+    assisting_player_id INT NULL,
+    description VARCHAR(255),
+    CHECK (minute_mark BETWEEN 1 AND 130),
+    CHECK (event_type IN ('GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION', 'OWN_GOAL', 'PENALTY_GOAL')),
+    CONSTRAINT fk_event_fixture FOREIGN KEY (fixture_id)
+        REFERENCES fixtures(fixture_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_event_club FOREIGN KEY (club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_event_player FOREIGN KEY (player_id)
+        REFERENCES players(player_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_event_assist FOREIGN KEY (assisting_player_id)
+        REFERENCES players(player_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+);
+
+CREATE TABLE standings (
+    standing_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_id INT NOT NULL,
+    club_id INT NOT NULL,
+    played INT NOT NULL DEFAULT 0,
+    wins INT NOT NULL DEFAULT 0,
+    draws INT NOT NULL DEFAULT 0,
+    losses INT NOT NULL DEFAULT 0,
+    goals_for INT NOT NULL DEFAULT 0,
+    goals_against INT NOT NULL DEFAULT 0,
+    goal_difference INT NOT NULL DEFAULT 0,
+    points INT NOT NULL DEFAULT 0,
+    position_no INT,
+    UNIQUE KEY uq_standing_season_club (season_id, club_id),
+    UNIQUE KEY uq_standing_position (season_id, position_no),
+    CHECK (played >= 0),
+    CHECK (wins >= 0),
+    CHECK (draws >= 0),
+    CHECK (losses >= 0),
+    CHECK (goals_for >= 0),
+    CHECK (goals_against >= 0),
+    CHECK (goal_difference = goals_for - goals_against),
+    CHECK (points = (wins * 3) + draws),
+    CHECK (played = wins + draws + losses),
+    CONSTRAINT fk_standing_season FOREIGN KEY (season_id)
+        REFERENCES seasons(season_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_standing_club FOREIGN KEY (club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+);
+
+CREATE TABLE transfers (
+    transfer_id INT AUTO_INCREMENT PRIMARY KEY,
+    player_id INT NOT NULL,
+    season_id INT NOT NULL,
+    from_club_id INT NULL,
+    to_club_id INT NOT NULL,
+    transfer_date DATE NOT NULL,
+    transfer_fee DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    transfer_type VARCHAR(20) NOT NULL DEFAULT 'PERMANENT',
+    status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED',
+    CHECK (transfer_fee >= 0),
+    CHECK (transfer_type IN ('PERMANENT', 'LOAN', 'FREE_AGENT')),
+    CHECK (status IN ('PENDING', 'COMPLETED', 'CANCELLED')),
+    CONSTRAINT fk_transfer_player FOREIGN KEY (player_id)
+        REFERENCES players(player_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_transfer_season FOREIGN KEY (season_id)
+        REFERENCES seasons(season_id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_transfer_from_club FOREIGN KEY (from_club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
+    CONSTRAINT fk_transfer_to_club FOREIGN KEY (to_club_id)
+        REFERENCES clubs(club_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_player_last_name ON players(last_name, first_name);
+CREATE INDEX idx_fixture_matchweek ON fixtures(season_id, matchweek, match_date);
+CREATE INDEX idx_event_type ON match_events(event_type);
+CREATE INDEX idx_transfer_date ON transfers(transfer_date);
+
+CREATE OR REPLACE VIEW vw_current_standings AS
+SELECT
+    s.season_name,
+    st.position_no,
+    c.club_name,
+    st.played,
+    st.wins,
+    st.draws,
+    st.losses,
+    st.goals_for,
+    st.goals_against,
+    st.goal_difference,
+    st.points
+FROM standings st
+JOIN seasons s ON st.season_id = s.season_id
+JOIN clubs c ON st.club_id = c.club_id
+ORDER BY s.season_name, st.position_no;
+
+CREATE OR REPLACE VIEW vw_top_scorers AS
+SELECT
+    se.season_name,
+    p.player_id,
+    CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+    c.club_name,
+    COUNT(*) AS goals
+FROM match_events me
+JOIN fixtures f ON me.fixture_id = f.fixture_id
+JOIN seasons se ON f.season_id = se.season_id
+JOIN players p ON me.player_id = p.player_id
+JOIN clubs c ON p.current_club_id = c.club_id
+WHERE me.event_type IN ('GOAL', 'PENALTY_GOAL')
+GROUP BY se.season_name, p.player_id, player_name, c.club_name
+ORDER BY goals DESC, player_name;
+
+
+CREATE TABLE official_registered_squads (
+    squad_entry_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_name VARCHAR(20) NOT NULL,
+    source_snapshot_date DATE NOT NULL,
+    club_name VARCHAR(100) NOT NULL,
+    player_name VARCHAR(150) NOT NULL,
+    is_home_grown BOOLEAN NOT NULL DEFAULT FALSE,
+    squad_scope VARCHAR(50) NOT NULL DEFAULT 'Senior Registered Squad',
+    source_note VARCHAR(255),
+    UNIQUE KEY uq_official_squad_entry (season_name, source_snapshot_date, club_name, player_name, squad_scope)
+);
+
+CREATE OR REPLACE VIEW vw_current_official_squad_counts AS
+SELECT
+    season_name,
+    source_snapshot_date,
+    club_name,
+    COUNT(*) AS registered_senior_players,
+    SUM(CASE WHEN is_home_grown THEN 1 ELSE 0 END) AS home_grown_players,
+    SUM(CASE WHEN is_home_grown THEN 0 ELSE 1 END) AS non_home_grown_players
+FROM official_registered_squads
+GROUP BY season_name, source_snapshot_date, club_name
+ORDER BY club_name;
+
+CREATE OR REPLACE VIEW vw_current_home_grown_players AS
+SELECT
+    season_name,
+    source_snapshot_date,
+    club_name,
+    player_name
+FROM official_registered_squads
+WHERE is_home_grown = TRUE
+ORDER BY club_name, player_name;
+
+
+-- ===== FILE: code/database/02_sample_data.sql =====
+USE epl_dbms;
+
+INSERT INTO seasons (season_name, start_date, end_date, status) VALUES
+('2025/2026', '2025-08-15', '2026-05-24', 'ACTIVE'),
+('2024/2025', '2024-08-16', '2025-05-25', 'COMPLETED');
+
+INSERT INTO stadiums (stadium_name, city, country, capacity) VALUES
+('Old Trafford', 'Manchester', 'England', 74031),
+('Anfield', 'Liverpool', 'England', 61276),
+('Emirates Stadium', 'London', 'England', 60704),
+('Etihad Stadium', 'Manchester', 'England', 53400),
+('Stamford Bridge', 'London', 'England', 40343),
+('Tottenham Hotspur Stadium', 'London', 'England', 62850);
+
+INSERT INTO clubs (club_name, short_name, founded_year, manager_name, sponsor_name, stadium_id) VALUES
+('Manchester United', 'MUN', 1878, 'Erik ten Hag', 'TeamViewer', 1),
+('Liverpool', 'LIV', 1892, 'Arne Slot', 'Standard Chartered', 2),
+('Arsenal', 'ARS', 1886, 'Mikel Arteta', 'Emirates', 3),
+('Manchester City', 'MCI', 1880, 'Pep Guardiola', 'Etihad Airways', 4),
+('Chelsea', 'CHE', 1905, 'Enzo Maresca', 'Infinite Athlete', 5),
+('Tottenham Hotspur', 'TOT', 1882, 'Ange Postecoglou', 'AIA', 6);
+
+INSERT INTO positions (position_code, position_name) VALUES
+('GK', 'Goalkeeper'),
+('DF', 'Defender'),
+('MF', 'Midfielder'),
+('FW', 'Forward');
+
+INSERT INTO players (first_name, last_name, date_of_birth, nationality, position_id, squad_number, preferred_foot, current_club_id, market_value) VALUES
+('Andre', 'Onana', '1996-04-02', 'Cameroon', 1, 24, 'Right', 1, 35000000.00),
+('Bruno', 'Fernandes', '1994-09-08', 'Portugal', 3, 8, 'Right', 1, 55000000.00),
+('Marcus', 'Rashford', '1997-10-31', 'England', 4, 10, 'Right', 1, 60000000.00),
+('Virgil', 'van Dijk', '1991-07-08', 'Netherlands', 2, 4, 'Right', 2, 30000000.00),
+('Mohamed', 'Salah', '1992-06-15', 'Egypt', 4, 11, 'Left', 2, 65000000.00),
+('Bukayo', 'Saka', '2001-09-05', 'England', 4, 7, 'Left', 3, 90000000.00),
+('Declan', 'Rice', '1999-01-14', 'England', 3, 41, 'Right', 3, 95000000.00),
+('Erling', 'Haaland', '2000-07-21', 'Norway', 4, 9, 'Left', 4, 180000000.00),
+('Kevin', 'De Bruyne', '1991-06-28', 'Belgium', 3, 17, 'Right', 4, 70000000.00),
+('Cole', 'Palmer', '2002-05-06', 'England', 3, 20, 'Left', 5, 85000000.00),
+('Son', 'Heung-min', '1992-07-08', 'South Korea', 4, 7, 'Right', 6, 50000000.00),
+('James', 'Maddison', '1996-11-23', 'England', 3, 10, 'Right', 6, 45000000.00);
+
+INSERT INTO club_registrations (season_id, club_id, registration_date, registration_status) VALUES
+(1, 1, '2025-08-01', 'APPROVED'),
+(1, 2, '2025-08-01', 'APPROVED'),
+(1, 3, '2025-08-01', 'APPROVED'),
+(1, 4, '2025-08-01', 'APPROVED'),
+(1, 5, '2025-08-01', 'APPROVED'),
+(1, 6, '2025-08-01', 'APPROVED');
+
+INSERT INTO fixtures (season_id, matchweek, match_date, stadium_id, home_club_id, away_club_id, home_score, away_score, status, attendance) VALUES
+(1, 1, '2025-08-16 15:00:00', 1, 1, 2, 1, 2, 'COMPLETED', 73500),
+(1, 1, '2025-08-17 16:30:00', 3, 3, 4, 1, 1, 'COMPLETED', 60100),
+(1, 1, '2025-08-18 20:00:00', 6, 6, 5, 2, 0, 'COMPLETED', 62000),
+(1, 2, '2025-08-23 15:00:00', 2, 2, 3, 0, 0, 'SCHEDULED', 0),
+(1, 2, '2025-08-24 16:30:00', 4, 4, 1, 0, 0, 'SCHEDULED', 0);
+
+INSERT INTO match_events (fixture_id, minute_mark, event_type, club_id, player_id, assisting_player_id, description) VALUES
+(1, 12, 'GOAL', 2, 5, NULL, 'Salah opens the scoring'),
+(1, 33, 'GOAL', 1, 3, 2, 'Rashford equalizes'),
+(1, 77, 'GOAL', 2, 5, 4, 'Salah scores the winner'),
+(2, 50, 'GOAL', 4, 8, 9, 'Haaland from close range'),
+(2, 74, 'GOAL', 3, 6, 7, 'Saka curls in the equalizer'),
+(3, 22, 'GOAL', 6, 11, 12, 'Son finishes from the edge of the box'),
+(3, 68, 'GOAL', 6, 12, 11, 'Maddison doubles the lead');
+
+INSERT INTO standings (season_id, club_id, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, position_no) VALUES
+(1, 2, 1, 1, 0, 0, 2, 1, 1, 3, 1),
+(1, 6, 1, 1, 0, 0, 2, 0, 2, 3, 2),
+(1, 3, 1, 0, 1, 0, 1, 1, 0, 1, 3),
+(1, 4, 1, 0, 1, 0, 1, 1, 0, 1, 4),
+(1, 1, 1, 0, 0, 1, 1, 2, -1, 0, 5),
+(1, 5, 1, 0, 0, 1, 0, 2, -2, 0, 6);
+
+INSERT INTO transfers (player_id, season_id, from_club_id, to_club_id, transfer_date, transfer_fee, transfer_type, status) VALUES
+(10, 1, 4, 5, '2025-07-10', 45000000.00, 'PERMANENT', 'COMPLETED'),
+(12, 1, 5, 6, '2025-07-20', 35000000.00, 'PERMANENT', 'COMPLETED');
+
+
+-- =========================================================
+-- OFFICIAL CURRENT SQUADS SUPPORT
+-- Integrated from the official Premier League 2025/26 updated
+-- squad-list publication snapshot dated 2026-02-05.
+-- =========================================================
+
+USE epl_dbms;
+
+CREATE TABLE IF NOT EXISTS official_registered_squads (
+    squad_entry_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_name VARCHAR(20) NOT NULL,
+    source_snapshot_date DATE NOT NULL,
+    club_name VARCHAR(100) NOT NULL,
+    player_name VARCHAR(150) NOT NULL,
+    is_home_grown BOOLEAN NOT NULL DEFAULT FALSE,
+    squad_scope VARCHAR(50) NOT NULL DEFAULT 'Senior Registered Squad',
+    source_note VARCHAR(255),
+    UNIQUE KEY uq_official_squad_entry (season_name, source_snapshot_date, club_name, player_name, squad_scope)
+);
+
+DELETE FROM official_registered_squads
+WHERE season_name = '2025/26' AND source_snapshot_date = '2026-02-05';
+
+INSERT INTO official_registered_squads
+(season_name, source_snapshot_date, club_name, player_name, is_home_grown, squad_scope, source_note)
+VALUES
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Adams, Tyler Shaan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Adli, Amine', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Bevan, Owen Lucas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Brooks, David Robert', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Christie, Ryan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Cook, Lewis John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'De Lima Barbosa, Francisco Evanilson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Dennis, William Jonathon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Diakite, Bafode', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Forster, Fraser Gerard', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Hill, James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Kluivert, Justin Dean', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Mandas, Christos', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Petrovic, Djorde', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Sadi, Dominic Wadi', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Scott, Alex Jay', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Senesi Baron, Marcos Nicolas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Smith, Adam James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Tavernier, Marcus Joseph', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Truffert, Adrien Lillan Gaetan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Unal, Enes', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Arrizabalaga Revuelta, Kepa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Calafiori, Riccardo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Dos Santos Magalhães, Gabriel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Eze, Eberechi Oluchi', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Fernando De Jesus, Gabriel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Gyökeres, Viktor Einar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Havertz, Kai', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Hincapie Reyna, Piero Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Madueke, Chukwunonso Azuka Tristan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Merino Zazon, Mikel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Norgaard, Christian', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Odegaard, Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Raya Martin, David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Rice, Declan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Saka, Bukayo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Saliba, William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Teodoro Martinelli Silva, Gabriel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Timber, Jurrien', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Trossard, Leandro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'White, Benjamin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Zubimendi Ibáñez, Martín', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Bailey, Leon Patrick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Bakumo-Abraham, Kevin Oghenetega Tamaraebi', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Barkley, Ross', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Bizot, Marco', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Buendia Stati, Emiliano', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Cash, Matthew Stuart', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Digne, Lucas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Elliott, Harvey Daniel James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Francisco Torres, Pau', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Garcia Robledo, Andres', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Kamara, Boubacar Bernard', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Konsa, Ezri Ngoyo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Maatsen, Ian Ethan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Martinez Romero, Damian Emiliano', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'McGinn, John', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Mings, Tyrone Deon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Mvom Onana, Amadou Ba Z', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Nilsson Lindelof, Victor Jorgen', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Rogers, Morgan Elliot', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Sancho, Jadon Malik', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Soares De Paulo, Douglas Luiz', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Tielemans, Youri Marion', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Watkins, Oliver George Arthur', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Adedokun, Valentino Mayowa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Ajer, Kristoffer Vassbakk', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Balcombe, Ellery Ronald', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Collins, Nathan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Cox, Matthew Aidan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Damsgaard, Mikkel Krogh', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Dasilva, Pelenda Joshua Tunga', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Freitas Gouveia De Carvalho, Fabio Leandro', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Henderson, Jordan Brian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Henry, Rico', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Hickey, Aaron Buchanan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Janelt, Vitaly', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Jensen, Mathias', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Kelleher, Caoimhin Odhran', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Lewis-Potter, Keane William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Nascimento Rodrigues, Igor Thiago', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Nelson, Reiss', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Ouattara, Dango Aboubacar Faissal', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Pinnock, Ethan Rupert', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Schade, Kevin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Valdimarsson, Hakon Rafn', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Van Den Berg, Sepp', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Ayari, Yasin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Boscagli, Olivier', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'De Cuyper, Maxim Peter', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Dos Santos De Paulo, Igor Julio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Dunk, Lewis Carl', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Gomez Amarilla, Diego Alexander', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Gross, Pascal Alexander', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Kadioglu, Ferdi Erenay', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'March, Soloman Benjamin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'McGill, Thomas Peter Wayne', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Milner, James Phillips', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Mitoma, Kaoru', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'O''Riley, Matthew Sean', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Rushworth, Carl Andrew', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Rutter, Georginio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Steele, Jason Sean', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Van Hecke, Jan Paul', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Veltman, Joel Ivo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Verbruggen, Bart', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Webster, Adam Harry', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Welbeck, Daniel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Wieffer, Mats Henrik Berne', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Amdouni, Mohamed Zeki', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Anthony, Jaidon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Barnes, Ashley', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Broja, Armando', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Dubravka, Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Edwards, Marcus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Ekdal, Hjalmar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Estève, Maxime', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Flemming, Zian', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Foster, Lyle Brent', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Hartman, Quilindschy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Hladký, Vaclav', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Humphreys, Bashir', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Larsen, Jacob Bruun', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Laurent, Joshua Ishaele Jacob-Heron', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Mejbri, Hannibal', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Morris Luis, Florentina Ibrain', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Pires Silva, Lucas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Roberts, Connor', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Tchaouna, Loum', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Tresor Ndayishimiye, Mike', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Tuanzebe, Axel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Walker, Kyle Andrew', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Ward-Prowse, James Michael Edward', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Worrall, Joseph Adrian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Adarabioyo, abdul-Nasir Oluwatosin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Badiashile Mukinayi, Benoit Ntambue', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Caicedo Corozo, Moises Isaac', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Chalobah, Trevoh Tom', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Cucurella Saseta, Marc', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Delap, Liam Rory', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Fernandez, Enzo Jeremias', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Fofana, Wesley Tidjan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Gusto, Malo Arthur', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'James, Reece', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Jorgensen, Filip', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Junqueira De Jesus, Joao Pedro', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Lomba Neto, Pedro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Lynch Sanchez, Robert', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Palmer, Cole', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Samuels Colwill, Levi Lamar', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Sharman-Lowe, Teddy Samuel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Benitez, Walter Daniel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Clyne, Nathaniel Edward', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Devenny, Justin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Doucoure, Cheick Oumar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Guessand, Evann Ludovic Vidjannagni', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Henderson, Dean Bradley', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Hughes, William James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Johnson, Brennan Price', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Kamada, Daichi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Lacroix, Maxence Guy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Larsen, Jørgen Strand', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Lerma, Jefferson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Mateta, Jean-Philippe', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Matthews, Remi Luke', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Mitchell, Tyrick', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Munoz Mejia, Daniel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Nketiah, Edward Keddar', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Pino Santos, Yeremy Jesus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Riad Dnanou, Chadi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Richards, Christopher Jeffrey', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Sarr, Ismaila', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Sosa, Borna', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Uche, Christantus Ugonna', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Alcaraz Durán, Carlos Jonas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Barry, Thierno Mamadou', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Branthwaite, Jarrad Paul', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Coleman, Seamus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Dewsbury-Hall, Kiernan Frank', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Garner, James David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Gomes Betuncal, Norberto Bercique', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Grealish, Jack Peter', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Gueye, Idrissa Gana', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Iroegbunam, Timothy Emeka', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Keane, Michael Vincent', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'King, Thomas Lloyd', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'McNeil, Dwight James Matthew', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Mykolenko, Vitalii', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Ndiaye, Iliman-Cheikh Baroy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'O''Brien, Jake Patrick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Patterson, Nathan Kenneth', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Pickford, Jordan Lee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Röhl, Merlin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Tarkowski, James Alan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Travers, Mark John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Welch, Reece Belfield', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Andersen, Joachim Christian', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Bassey, Calvin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Berge, Sander Gard Bolin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Bobb, Oscar', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Borto, Alexander Paul', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Cairney, Thomas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Castagne, Timothy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Chukwueze, Samuel Chimerenka', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Cuenca Barreno, Jorge', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Diop, Issa Laye Lucas Jean', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Iwobi, Alexander Chuka', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Jiménez Rodríguez, Raúl Alonso', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Lecomte, Benjamin Pascal', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Leno, Bernd', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Lukic, Sasa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Muniz Carvalho, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Reed, Harrison James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Robinson, Antonee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Santos Lopes de Macedo, Kevin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Sessegnon, Kouassi Ryan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Smith Rowe, Emile', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Tete, Kenny Joelle', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Wilson, Harry', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Aaronson, Brenden Russell', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Ampadu, Ethan Kwame Colm Raymond', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Bijol, Jaka', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Bogle, Jayden Ian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Bornauw, Sebastiaan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Byram, Samuel Mark', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Cairns, Alex Thomas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Calvert-Lewin, Dominic', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Darlow, Karl', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Gnonto, Degnand Wilfried', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Gruev, Ilia', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Gudmundsson, Gabriel Johan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'James, Daniel Owen', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Justin, James MIchael', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Longstaff, Sean David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Meslier, Illan Stephane', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Nmecha, Lukas Okechukwu', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Okafor, Noah Arinzechukwu', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Perri, Lucas Estella', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Piroe, Joel Mohammed Ramzan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Rodon, Joseph Peter', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Stach, Anton Levi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Struijk, Pascal Augustus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Tanaka, Ao', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Beck, Owen Michael', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Becker, Alisson Ramses', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Bradley, Conor', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Chiesa, Federico', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Davies, Harvey', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Ekitiké, Hugo Timothée', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Endo, Wataru', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Frimpong, Jeremie', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Gakpo, Cody', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Gomez, Joseph David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Gravenberch, Ryan Jiro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Isak, Alexander', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Jones, Curtis', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Kerkez, Milos', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Konate, Ibrahima', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Mac Allister, Alexis', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Mamardashvili, Giorgi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Ramsay, Calvin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Robertson, Andrew', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Salah, Mohamed', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Szoboszlai, Dominik', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Van Dijk, Virgil', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Williams, Rhys', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Wirtz, Florian Richard', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Woodman, Frederick John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Ait-Nouri, Rayan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Ake, Nathan Benjamin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Bettinelli, Marcus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Cherki, Rayan Mathis', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Doku, Jeremy Baffour', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Donnarumma, Gianluigi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Dos Santos Gato Alves Dias, Ruben', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Foden, Philip Walter', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Gonzalez Iglesias, Nicolas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Guehi, Addji Keaninkin Marc-Israel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Gvardiol, Josko', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Haaland, Erling Braut', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Hernandez Cascante, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Kovacic, Mateo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Marmoush, Omar Khaled', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Mota Veiga De Carvalho E Silva, Bernardo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Nunes, Matheus Luiz', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Reijnders, Tijjani Martinus Jan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Semenyo, Antoine Serlom', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Stones, John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Trafford, James Harrington', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Bayindir, Altay', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Borges Fernandes, Bruno Miguel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Casimiro, Carlos Henrique', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Dalot Teixeira, Jose Diogo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'De Ligt, Matthijs', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Diallo, Amad', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Heaton, Thomas David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Lammens, Senne', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Maguire, Harry Jacob', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Malacia, Tyrell Johannes Chicco', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Martinez, Lisandro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mazraoui, Noussair', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mbeumo, Bryan Tetsadong Marceau', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mee, Dermot William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mount, Mason Tony', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Santos Carneiro da Cunha, Matheus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Sesko, Benjamin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Shaw, Luke Paul Hoare', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Ugarte Ribeiro, Manuel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Zirkzee, Joshua Orobosa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Apolinario De Lira, Joelinton Cassio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Barnes, Harvey Lewis', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Botman, Sven Adriaan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Burn, Daniel Johnson', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Elanga, Anthony David Junior', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Gillespie, Mark Joseph', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Gordon, Anthony Michael', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Guimaraes Rodriguez Moura, Bruno', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Kraft, Emil Henry Kristoffer', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Livramento, Valentino', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Murphy, Jacob Kai', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Osula, William Idamudia Daugaard', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Pope, Nicholas David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Ramsdale, Aaron', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Ramsey, Jacob Matthew Decourcey', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Ruddy, John Thomas Gordon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Schar, Fabian Lukas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Thiaw, Malick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Tonali, Sandro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Trippier, Kieran John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Willock, Joseph George', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Wissa, Yoane', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Woltemade, Nick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Aina, Temitayo Olufisayo Olaoluwa', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Anderson, Elliot Junior', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Awoniyi, Taiwo Micheal', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Bakwa, Dilane Ros-Anderson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Costa Dos Santos, Murillo Santiago', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Dominguez, Nicolas Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Gibbs-White, Morgan Anthony', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Giraud-Hutchinson, Omari Elijah', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Gunn, Angus Fraser James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Hudson-Odoi, Callum James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Lucca, Lorenzo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Maciel Da Cruz, Igor Jesus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Maciel Furtado, John Victor', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'McAtee, James John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Milenkovic, Nikola', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Ndoye, Dan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Netz, Luca', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Ortega Moreno, Stefan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Rodrigues Da Silva, Felipe', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Sangare, Ibrahim', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Savona, Nicolo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Sels, Matz Willy Els', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Williams, Neco Shay', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Wood, Christopher Grant', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Yates, Ryan James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Alderete Fernandez, Omar Federico', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ba, Abdoullah Mustapha', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ballard, Daniel George', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Brobbey, Brian Ebenezer Adjai', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Cirkin, Dennis', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ellborg, Melker Ake', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Geertruida, Lutsharel Emiliano', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Hume, Trai', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Isidor, Wilson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Le Fée, Enzo Jérémy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Mandava, Reinildo Isnard', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Moore, Simon William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Mukiele Mulere, Nordi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Mundle, Romaine Lee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'O''Nien, Luke Terry', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Poveda-Ocampo, Ian Carlo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ramirez, Nilson David Angulo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Richardson, Adam Lee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Roefs, Robin Gerardus Petrus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Traore, Bertrand Isidore', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Xhaka, Granit', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Austin, Brandon Anthony', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Bentancur, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Bissouma, Yves', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Craig, Matthew George', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Danso, Kevin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Davies, Benjamin Thomas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'De Andrade, Richarlison', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Dragusin, Radu-Matei', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Gallagher, Conor', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kinsky, Antonin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kolo Muani, Randal', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kudus, Mohammed', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kulusevski, Dejan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Lobo Alves P. Costa Palhinha Goncalves, Joao Maria', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Maddison, James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Porro Sauceda, Pedro Antonio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Romero, Cristian Gabriel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Sarr, Pape Matar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Simons, Xavi Quentin Shay', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Solanke-Mitchell, Dominic Ayodele', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Spence, Diop Djed', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Udogie, Iyenoma Destiny', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Van De Ven, Micky', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Vicario, Guglielmo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Areola, Alphonse Francis', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Bowen, Jarrod', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Castellanos Gimenez, Valentin Mariano Jose', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Disasi Mhakinis Belho, Axel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Fabianski, Lukasz Marek', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Hermansen, Mads', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Kilman, Maximilian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Lamadrid Briceno, Keiber Alberto', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Magassa, Soungoutou', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Mavropanos, Konstantinos', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Potts, Freddie', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Soucek, Tomas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Summerville, Crysencio Jilbert Sylverio Cirro', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Todibo, Jean-Clair Dimitri Roger', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Traore Diarra, Adama', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Walker-Peters, Kyle Leonardus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Wan-Bissaka, Aaron', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Wilson, Callum Eddie Graham', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Agbadou, Badobre Emmanuel Elysee Djedje', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Arias Andrade, Jhon Adolfo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Armstrong, Adam James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Arokodare, Toluwalase Emmanuel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Bellegarde, Jeanricner', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Bentley, Daniel Ian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Bueno Lopez, Hugo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Doherty, Matthew James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Gomes, Adilson Angel Abreu Almeida', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Gomes, Tote Antonio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Gomes Da Silva, Joao Victor', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Griffiths, Harvey Lawson', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Hwang, Hee-Chan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Ignacio Bueno, Santiago', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Johnstone, Samuel Luke', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Krejci, Ladislav', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Lembikisa, Dexter Joeng Woo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Malheiro De Sa, Jose Pedro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Martins Gomes, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Mosquera Valdelamar, Yerson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Tchatchoua, Jackson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Trindade Da Costa Neto, Andre', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Wolfe, David Moller', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window');
+
+CREATE OR REPLACE VIEW vw_current_official_squad_counts AS
+SELECT
+    season_name,
+    source_snapshot_date,
+    club_name,
+    COUNT(*) AS registered_senior_players,
+    SUM(CASE WHEN is_home_grown THEN 1 ELSE 0 END) AS home_grown_players,
+    SUM(CASE WHEN is_home_grown THEN 0 ELSE 1 END) AS non_home_grown_players
+FROM official_registered_squads
+GROUP BY season_name, source_snapshot_date, club_name
+ORDER BY club_name;
+
+CREATE OR REPLACE VIEW vw_current_home_grown_players AS
+SELECT
+    season_name,
+    source_snapshot_date,
+    club_name,
+    player_name
+FROM official_registered_squads
+WHERE is_home_grown = TRUE
+ORDER BY club_name, player_name;
+
+-- Example report queries
+-- 1. Senior squad counts by club
+SELECT * FROM vw_current_official_squad_counts;
+
+-- 2. Arsenal official registered squad
+SELECT player_name, is_home_grown
+FROM official_registered_squads
+WHERE season_name = '2025/26'
+  AND source_snapshot_date = '2026-02-05'
+  AND club_name = 'Arsenal'
+ORDER BY player_name;
+
+-- 3. Find every club where a player named 'Wilson' appears
+SELECT club_name, player_name
+FROM official_registered_squads
+WHERE player_name LIKE 'Wilson,%'
+ORDER BY club_name, player_name;
+
+
+-- ===== FILE: code/database/03_reports.sql =====
+USE epl_dbms;
+
+-- 1. Current standings
+SELECT *
+FROM vw_current_standings
+WHERE season_name = '2025/2026';
+
+-- 2. Top scorers
+SELECT *
+FROM vw_top_scorers
+WHERE season_name = '2025/2026';
+
+-- 3. Fixtures for a given matchweek
+SELECT
+    s.season_name,
+    f.matchweek,
+    DATE_FORMAT(f.match_date, '%Y-%m-%d %H:%i') AS match_date,
+    hc.club_name AS home_club,
+    ac.club_name AS away_club,
+    f.status,
+    CONCAT(f.home_score, ' - ', f.away_score) AS score
+FROM fixtures f
+JOIN seasons s ON f.season_id = s.season_id
+JOIN clubs hc ON f.home_club_id = hc.club_id
+JOIN clubs ac ON f.away_club_id = ac.club_id
+WHERE s.season_name = '2025/2026' AND f.matchweek = 1
+ORDER BY f.match_date;
+
+-- 4. Players in a club
+SELECT
+    c.club_name,
+    p.player_id,
+    CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+    pos.position_name,
+    p.squad_number,
+    p.nationality
+FROM players p
+JOIN clubs c ON p.current_club_id = c.club_id
+JOIN positions pos ON p.position_id = pos.position_id
+WHERE c.club_name = 'Manchester United'
+ORDER BY p.squad_number, p.last_name;
+
+-- 5. Transfers made by a club
+SELECT
+    CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+    COALESCE(fc.club_name, 'Free Agent') AS from_club,
+    tc.club_name AS to_club,
+    t.transfer_date,
+    t.transfer_fee,
+    t.transfer_type,
+    t.status
+FROM transfers t
+JOIN players p ON t.player_id = p.player_id
+LEFT JOIN clubs fc ON t.from_club_id = fc.club_id
+JOIN clubs tc ON t.to_club_id = tc.club_id
+WHERE tc.club_name = 'Tottenham Hotspur'
+ORDER BY t.transfer_date DESC;
+
+-- 6. Club with most wins in a season
+SELECT
+    s.season_name,
+    c.club_name,
+    st.wins,
+    st.points
+FROM standings st
+JOIN seasons s ON st.season_id = s.season_id
+JOIN clubs c ON st.club_id = c.club_id
+WHERE s.season_name = '2025/2026'
+ORDER BY st.wins DESC, st.points DESC
+LIMIT 1;
+
+-- 7. Yellow/red card summary
+SELECT
+    CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+    c.club_name,
+    SUM(CASE WHEN me.event_type = 'YELLOW_CARD' THEN 1 ELSE 0 END) AS yellow_cards,
+    SUM(CASE WHEN me.event_type = 'RED_CARD' THEN 1 ELSE 0 END) AS red_cards
+FROM match_events me
+JOIN players p ON me.player_id = p.player_id
+JOIN clubs c ON me.club_id = c.club_id
+GROUP BY p.player_id, player_name, c.club_name
+ORDER BY red_cards DESC, yellow_cards DESC, player_name;
+
+
+-- 8. Official current senior squad counts by club
+SELECT *
+FROM vw_current_official_squad_counts
+WHERE season_name = '2025/26';
+
+-- 9. Official registered squad for Arsenal
+SELECT
+    player_name,
+    CASE WHEN is_home_grown THEN 'Yes' ELSE 'No' END AS home_grown
+FROM official_registered_squads
+WHERE season_name = '2025/26'
+  AND club_name = 'Arsenal'
+ORDER BY player_name;
+
+-- 10. All home-grown players in the official registered squads
+SELECT *
+FROM vw_current_home_grown_players
+WHERE season_name = '2025/26';
+
+
+-- ===== FILE: code/database/04_official_current_registered_squads_2025_26.sql =====
+USE epl_dbms;
+
+CREATE TABLE IF NOT EXISTS official_registered_squads (
+    squad_entry_id INT AUTO_INCREMENT PRIMARY KEY,
+    season_name VARCHAR(20) NOT NULL,
+    source_snapshot_date DATE NOT NULL,
+    club_name VARCHAR(100) NOT NULL,
+    player_name VARCHAR(150) NOT NULL,
+    is_home_grown BOOLEAN NOT NULL DEFAULT FALSE,
+    squad_scope VARCHAR(50) NOT NULL DEFAULT 'Senior Registered Squad',
+    source_note VARCHAR(255),
+    UNIQUE KEY uq_official_squad_entry (season_name, source_snapshot_date, club_name, player_name, squad_scope)
+);
+
+DELETE FROM official_registered_squads
+WHERE season_name = '2025/26' AND source_snapshot_date = '2026-02-05';
+
+INSERT INTO official_registered_squads
+(season_name, source_snapshot_date, club_name, player_name, is_home_grown, squad_scope, source_note)
+VALUES
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Adams, Tyler Shaan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Adli, Amine', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Bevan, Owen Lucas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Brooks, David Robert', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Christie, Ryan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Cook, Lewis John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'De Lima Barbosa, Francisco Evanilson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Dennis, William Jonathon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Diakite, Bafode', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Forster, Fraser Gerard', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Hill, James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Kluivert, Justin Dean', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Mandas, Christos', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Petrovic, Djorde', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Sadi, Dominic Wadi', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Scott, Alex Jay', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Senesi Baron, Marcos Nicolas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Smith, Adam James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Tavernier, Marcus Joseph', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Truffert, Adrien Lillan Gaetan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'AFC Bournemouth', 'Unal, Enes', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Arrizabalaga Revuelta, Kepa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Calafiori, Riccardo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Dos Santos Magalhães, Gabriel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Eze, Eberechi Oluchi', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Fernando De Jesus, Gabriel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Gyökeres, Viktor Einar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Havertz, Kai', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Hincapie Reyna, Piero Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Madueke, Chukwunonso Azuka Tristan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Merino Zazon, Mikel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Norgaard, Christian', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Odegaard, Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Raya Martin, David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Rice, Declan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Saka, Bukayo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Saliba, William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Teodoro Martinelli Silva, Gabriel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Timber, Jurrien', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Trossard, Leandro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'White, Benjamin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Arsenal', 'Zubimendi Ibáñez, Martín', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Bailey, Leon Patrick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Bakumo-Abraham, Kevin Oghenetega Tamaraebi', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Barkley, Ross', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Bizot, Marco', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Buendia Stati, Emiliano', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Cash, Matthew Stuart', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Digne, Lucas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Elliott, Harvey Daniel James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Francisco Torres, Pau', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Garcia Robledo, Andres', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Kamara, Boubacar Bernard', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Konsa, Ezri Ngoyo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Maatsen, Ian Ethan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Martinez Romero, Damian Emiliano', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'McGinn, John', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Mings, Tyrone Deon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Mvom Onana, Amadou Ba Z', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Nilsson Lindelof, Victor Jorgen', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Rogers, Morgan Elliot', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Sancho, Jadon Malik', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Soares De Paulo, Douglas Luiz', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Tielemans, Youri Marion', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Aston Villa', 'Watkins, Oliver George Arthur', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Adedokun, Valentino Mayowa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Ajer, Kristoffer Vassbakk', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Balcombe, Ellery Ronald', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Collins, Nathan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Cox, Matthew Aidan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Damsgaard, Mikkel Krogh', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Dasilva, Pelenda Joshua Tunga', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Freitas Gouveia De Carvalho, Fabio Leandro', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Henderson, Jordan Brian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Henry, Rico', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Hickey, Aaron Buchanan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Janelt, Vitaly', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Jensen, Mathias', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Kelleher, Caoimhin Odhran', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Lewis-Potter, Keane William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Nascimento Rodrigues, Igor Thiago', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Nelson, Reiss', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Ouattara, Dango Aboubacar Faissal', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Pinnock, Ethan Rupert', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Schade, Kevin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Valdimarsson, Hakon Rafn', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brentford', 'Van Den Berg, Sepp', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Ayari, Yasin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Boscagli, Olivier', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'De Cuyper, Maxim Peter', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Dos Santos De Paulo, Igor Julio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Dunk, Lewis Carl', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Gomez Amarilla, Diego Alexander', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Gross, Pascal Alexander', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Kadioglu, Ferdi Erenay', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'March, Soloman Benjamin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'McGill, Thomas Peter Wayne', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Milner, James Phillips', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Mitoma, Kaoru', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'O''Riley, Matthew Sean', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Rushworth, Carl Andrew', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Rutter, Georginio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Steele, Jason Sean', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Van Hecke, Jan Paul', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Veltman, Joel Ivo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Verbruggen, Bart', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Webster, Adam Harry', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Welbeck, Daniel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Brighton & Hove Albion', 'Wieffer, Mats Henrik Berne', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Amdouni, Mohamed Zeki', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Anthony, Jaidon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Barnes, Ashley', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Broja, Armando', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Dubravka, Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Edwards, Marcus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Ekdal, Hjalmar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Estève, Maxime', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Flemming, Zian', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Foster, Lyle Brent', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Hartman, Quilindschy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Hladký, Vaclav', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Humphreys, Bashir', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Larsen, Jacob Bruun', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Laurent, Joshua Ishaele Jacob-Heron', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Mejbri, Hannibal', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Morris Luis, Florentina Ibrain', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Pires Silva, Lucas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Roberts, Connor', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Tchaouna, Loum', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Tresor Ndayishimiye, Mike', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Tuanzebe, Axel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Walker, Kyle Andrew', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Ward-Prowse, James Michael Edward', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Burnley', 'Worrall, Joseph Adrian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Adarabioyo, abdul-Nasir Oluwatosin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Badiashile Mukinayi, Benoit Ntambue', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Caicedo Corozo, Moises Isaac', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Chalobah, Trevoh Tom', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Cucurella Saseta, Marc', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Delap, Liam Rory', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Fernandez, Enzo Jeremias', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Fofana, Wesley Tidjan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Gusto, Malo Arthur', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'James, Reece', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Jorgensen, Filip', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Junqueira De Jesus, Joao Pedro', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Lomba Neto, Pedro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Lynch Sanchez, Robert', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Palmer, Cole', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Samuels Colwill, Levi Lamar', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Chelsea', 'Sharman-Lowe, Teddy Samuel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Benitez, Walter Daniel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Clyne, Nathaniel Edward', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Devenny, Justin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Doucoure, Cheick Oumar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Guessand, Evann Ludovic Vidjannagni', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Henderson, Dean Bradley', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Hughes, William James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Johnson, Brennan Price', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Kamada, Daichi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Lacroix, Maxence Guy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Larsen, Jørgen Strand', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Lerma, Jefferson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Mateta, Jean-Philippe', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Matthews, Remi Luke', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Mitchell, Tyrick', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Munoz Mejia, Daniel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Nketiah, Edward Keddar', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Pino Santos, Yeremy Jesus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Riad Dnanou, Chadi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Richards, Christopher Jeffrey', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Sarr, Ismaila', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Sosa, Borna', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Crystal Palace', 'Uche, Christantus Ugonna', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Alcaraz Durán, Carlos Jonas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Barry, Thierno Mamadou', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Branthwaite, Jarrad Paul', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Coleman, Seamus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Dewsbury-Hall, Kiernan Frank', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Garner, James David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Gomes Betuncal, Norberto Bercique', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Grealish, Jack Peter', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Gueye, Idrissa Gana', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Iroegbunam, Timothy Emeka', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Keane, Michael Vincent', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'King, Thomas Lloyd', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'McNeil, Dwight James Matthew', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Mykolenko, Vitalii', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Ndiaye, Iliman-Cheikh Baroy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'O''Brien, Jake Patrick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Patterson, Nathan Kenneth', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Pickford, Jordan Lee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Röhl, Merlin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Tarkowski, James Alan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Travers, Mark John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Everton', 'Welch, Reece Belfield', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Andersen, Joachim Christian', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Bassey, Calvin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Berge, Sander Gard Bolin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Bobb, Oscar', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Borto, Alexander Paul', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Cairney, Thomas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Castagne, Timothy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Chukwueze, Samuel Chimerenka', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Cuenca Barreno, Jorge', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Diop, Issa Laye Lucas Jean', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Iwobi, Alexander Chuka', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Jiménez Rodríguez, Raúl Alonso', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Lecomte, Benjamin Pascal', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Leno, Bernd', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Lukic, Sasa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Muniz Carvalho, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Reed, Harrison James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Robinson, Antonee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Santos Lopes de Macedo, Kevin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Sessegnon, Kouassi Ryan', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Smith Rowe, Emile', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Tete, Kenny Joelle', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Fulham', 'Wilson, Harry', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Aaronson, Brenden Russell', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Ampadu, Ethan Kwame Colm Raymond', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Bijol, Jaka', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Bogle, Jayden Ian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Bornauw, Sebastiaan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Byram, Samuel Mark', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Cairns, Alex Thomas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Calvert-Lewin, Dominic', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Darlow, Karl', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Gnonto, Degnand Wilfried', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Gruev, Ilia', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Gudmundsson, Gabriel Johan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'James, Daniel Owen', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Justin, James MIchael', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Longstaff, Sean David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Meslier, Illan Stephane', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Nmecha, Lukas Okechukwu', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Okafor, Noah Arinzechukwu', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Perri, Lucas Estella', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Piroe, Joel Mohammed Ramzan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Rodon, Joseph Peter', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Stach, Anton Levi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Struijk, Pascal Augustus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Leeds United', 'Tanaka, Ao', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Beck, Owen Michael', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Becker, Alisson Ramses', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Bradley, Conor', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Chiesa, Federico', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Davies, Harvey', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Ekitiké, Hugo Timothée', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Endo, Wataru', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Frimpong, Jeremie', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Gakpo, Cody', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Gomez, Joseph David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Gravenberch, Ryan Jiro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Isak, Alexander', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Jones, Curtis', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Kerkez, Milos', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Konate, Ibrahima', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Mac Allister, Alexis', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Mamardashvili, Giorgi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Ramsay, Calvin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Robertson, Andrew', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Salah, Mohamed', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Szoboszlai, Dominik', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Van Dijk, Virgil', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Williams, Rhys', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Wirtz, Florian Richard', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Liverpool', 'Woodman, Frederick John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Ait-Nouri, Rayan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Ake, Nathan Benjamin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Bettinelli, Marcus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Cherki, Rayan Mathis', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Doku, Jeremy Baffour', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Donnarumma, Gianluigi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Dos Santos Gato Alves Dias, Ruben', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Foden, Philip Walter', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Gonzalez Iglesias, Nicolas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Guehi, Addji Keaninkin Marc-Israel', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Gvardiol, Josko', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Haaland, Erling Braut', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Hernandez Cascante, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Kovacic, Mateo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Marmoush, Omar Khaled', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Mota Veiga De Carvalho E Silva, Bernardo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Nunes, Matheus Luiz', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Reijnders, Tijjani Martinus Jan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Semenyo, Antoine Serlom', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Stones, John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester City', 'Trafford, James Harrington', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Bayindir, Altay', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Borges Fernandes, Bruno Miguel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Casimiro, Carlos Henrique', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Dalot Teixeira, Jose Diogo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'De Ligt, Matthijs', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Diallo, Amad', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Heaton, Thomas David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Lammens, Senne', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Maguire, Harry Jacob', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Malacia, Tyrell Johannes Chicco', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Martinez, Lisandro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mazraoui, Noussair', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mbeumo, Bryan Tetsadong Marceau', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mee, Dermot William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Mount, Mason Tony', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Santos Carneiro da Cunha, Matheus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Sesko, Benjamin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Shaw, Luke Paul Hoare', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Ugarte Ribeiro, Manuel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Manchester United', 'Zirkzee, Joshua Orobosa', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Apolinario De Lira, Joelinton Cassio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Barnes, Harvey Lewis', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Botman, Sven Adriaan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Burn, Daniel Johnson', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Elanga, Anthony David Junior', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Gillespie, Mark Joseph', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Gordon, Anthony Michael', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Guimaraes Rodriguez Moura, Bruno', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Kraft, Emil Henry Kristoffer', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Livramento, Valentino', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Murphy, Jacob Kai', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Osula, William Idamudia Daugaard', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Pope, Nicholas David', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Ramsdale, Aaron', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Ramsey, Jacob Matthew Decourcey', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Ruddy, John Thomas Gordon', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Schar, Fabian Lukas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Thiaw, Malick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Tonali, Sandro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Trippier, Kieran John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Willock, Joseph George', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Wissa, Yoane', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Newcastle United', 'Woltemade, Nick', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Aina, Temitayo Olufisayo Olaoluwa', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Anderson, Elliot Junior', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Awoniyi, Taiwo Micheal', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Bakwa, Dilane Ros-Anderson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Costa Dos Santos, Murillo Santiago', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Dominguez, Nicolas Martin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Gibbs-White, Morgan Anthony', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Giraud-Hutchinson, Omari Elijah', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Gunn, Angus Fraser James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Hudson-Odoi, Callum James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Lucca, Lorenzo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Maciel Da Cruz, Igor Jesus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Maciel Furtado, John Victor', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'McAtee, James John', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Milenkovic, Nikola', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Ndoye, Dan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Netz, Luca', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Ortega Moreno, Stefan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Rodrigues Da Silva, Felipe', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Sangare, Ibrahim', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Savona, Nicolo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Sels, Matz Willy Els', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Williams, Neco Shay', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Wood, Christopher Grant', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Nottingham Forest', 'Yates, Ryan James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Alderete Fernandez, Omar Federico', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ba, Abdoullah Mustapha', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ballard, Daniel George', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Brobbey, Brian Ebenezer Adjai', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Cirkin, Dennis', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ellborg, Melker Ake', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Geertruida, Lutsharel Emiliano', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Hume, Trai', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Isidor, Wilson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Le Fée, Enzo Jérémy', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Mandava, Reinildo Isnard', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Moore, Simon William', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Mukiele Mulere, Nordi', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Mundle, Romaine Lee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'O''Nien, Luke Terry', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Poveda-Ocampo, Ian Carlo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Ramirez, Nilson David Angulo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Richardson, Adam Lee', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Roefs, Robin Gerardus Petrus', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Traore, Bertrand Isidore', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Sunderland', 'Xhaka, Granit', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Austin, Brandon Anthony', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Bentancur, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Bissouma, Yves', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Craig, Matthew George', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Danso, Kevin', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Davies, Benjamin Thomas', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'De Andrade, Richarlison', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Dragusin, Radu-Matei', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Gallagher, Conor', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kinsky, Antonin', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kolo Muani, Randal', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kudus, Mohammed', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Kulusevski, Dejan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Lobo Alves P. Costa Palhinha Goncalves, Joao Maria', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Maddison, James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Porro Sauceda, Pedro Antonio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Romero, Cristian Gabriel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Sarr, Pape Matar', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Simons, Xavi Quentin Shay', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Solanke-Mitchell, Dominic Ayodele', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Spence, Diop Djed', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Udogie, Iyenoma Destiny', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Van De Ven, Micky', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Tottenham Hotspur', 'Vicario, Guglielmo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Areola, Alphonse Francis', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Bowen, Jarrod', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Castellanos Gimenez, Valentin Mariano Jose', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Disasi Mhakinis Belho, Axel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Fabianski, Lukasz Marek', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Hermansen, Mads', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Kilman, Maximilian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Lamadrid Briceno, Keiber Alberto', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Magassa, Soungoutou', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Mavropanos, Konstantinos', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Potts, Freddie', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Soucek, Tomas', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Summerville, Crysencio Jilbert Sylverio Cirro', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Todibo, Jean-Clair Dimitri Roger', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Traore Diarra, Adama', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Walker-Peters, Kyle Leonardus', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Wan-Bissaka, Aaron', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'West Ham United', 'Wilson, Callum Eddie Graham', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Agbadou, Badobre Emmanuel Elysee Djedje', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Arias Andrade, Jhon Adolfo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Armstrong, Adam James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Arokodare, Toluwalase Emmanuel', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Bellegarde, Jeanricner', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Bentley, Daniel Ian', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Bueno Lopez, Hugo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Doherty, Matthew James', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Gomes, Adilson Angel Abreu Almeida', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Gomes, Tote Antonio', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Gomes Da Silva, Joao Victor', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Griffiths, Harvey Lawson', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Hwang, Hee-Chan', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Ignacio Bueno, Santiago', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Johnstone, Samuel Luke', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Krejci, Ladislav', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Lembikisa, Dexter Joeng Woo', 1, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Malheiro De Sa, Jose Pedro', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Martins Gomes, Rodrigo', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Mosquera Valdelamar, Yerson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Tchatchoua, Jackson', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Trindade Da Costa Neto, Andre', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window'),
+('2025/26', '2026-02-05', 'Wolverhampton Wanderers', 'Wolfe, David Moller', 0, 'Senior Registered Squad', 'Premier League updated squad lists after January 2026 transfer window');
+
+CREATE OR REPLACE VIEW vw_current_official_squad_counts AS
+SELECT
+    season_name,
+    source_snapshot_date,
+    club_name,
+    COUNT(*) AS registered_senior_players,
+    SUM(CASE WHEN is_home_grown THEN 1 ELSE 0 END) AS home_grown_players,
+    SUM(CASE WHEN is_home_grown THEN 0 ELSE 1 END) AS non_home_grown_players
+FROM official_registered_squads
+GROUP BY season_name, source_snapshot_date, club_name
+ORDER BY club_name;
+
+CREATE OR REPLACE VIEW vw_current_home_grown_players AS
+SELECT
+    season_name,
+    source_snapshot_date,
+    club_name,
+    player_name
+FROM official_registered_squads
+WHERE is_home_grown = TRUE
+ORDER BY club_name, player_name;
+
+-- Example report queries
+-- 1. Senior squad counts by club
+SELECT * FROM vw_current_official_squad_counts;
+
+-- 2. Arsenal official registered squad
+SELECT player_name, is_home_grown
+FROM official_registered_squads
+WHERE season_name = '2025/26'
+  AND source_snapshot_date = '2026-02-05'
+  AND club_name = 'Arsenal'
+ORDER BY player_name;
+
+-- 3. Find every club where a player named 'Wilson' appears
+SELECT club_name, player_name
+FROM official_registered_squads
+WHERE player_name LIKE 'Wilson,%'
+ORDER BY club_name, player_name;
+
+
+CREATE TABLE clubs (     club_id INT AUTO_INCREMENT PRIMARY KEY,     club_name VARCHAR(100) NOT NULL UNIQUE,     short_name VARCHAR(20) NOT NULL UNIQUE,     founded_year INT,     manager_name VARCHAR(100) NOT NULL,     sponsor_name VARCHAR(100),     stadium_id INT NOT NULL,     CHECK (founded_year IS NULL OR founded_year BETWEEN 1850 AND 2025),     CONSTRAINT fk_club_stadium FOREIGN KEY (stadium_id)         REFERENCES stadiums(stadium_id)         ON UPDATE CASCADE         ON DELETE RESTRICT )

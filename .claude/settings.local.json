@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/mbomnda/Desktop/**)",
+      "Bash(zip -r \"EPL_DBMS_Project.zip\" \"DBMS EPL/epl_100_complete_project\" --exclude \"*/\\\\.DS_Store\")",
+      "Bash(mysql -u epl_admin -pepl_admin123 -e \"SELECT 1;\" epl_dbms)"
+    ]
+  }
+}

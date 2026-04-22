@@ -1,0 +1,2140 @@
+// ===== FILE: code/app/src/com/epl/Main.java =====
+package com.epl;
+
+import com.epl.ui.MainFrame;
+
+import javax.swing.SwingUtilities;
+
+public class Main {
+    public static void main(String[] args) {
+        MainFrame.applySystemLookAndFeel();
+        SwingUtilities.invokeLater(() -> new MainFrame().setVisible(true));
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/ClubDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.util.TableUtils;
+
+import javax.swing.table.DefaultTableModel;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+public class ClubDAO {
+    public DefaultTableModel getAllClubs() throws Exception {
+        String sql = """
+                SELECT c.club_id, c.club_name, c.short_name, c.founded_year,
+                       c.manager_name, c.sponsor_name, s.stadium_name
+                FROM clubs c
+                JOIN stadiums s ON c.stadium_id = s.stadium_id
+                ORDER BY c.club_name
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            return TableUtils.toTableModel(rs);
+        }
+    }
+
+    public void insertClub(String clubName, String shortName, int foundedYear,
+                           String managerName, String sponsorName, int stadiumId) throws Exception {
+        String sql = """
+                INSERT INTO clubs (club_name, short_name, founded_year, manager_name, sponsor_name, stadium_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, clubName);
+            statement.setString(2, shortName);
+            statement.setInt(3, foundedYear);
+            statement.setString(4, managerName);
+            statement.setString(5, sponsorName);
+            statement.setInt(6, stadiumId);
+            statement.executeUpdate();
+        }
+    }
+
+    public void updateClub(int clubId, String clubName, String shortName, int foundedYear,
+                           String managerName, String sponsorName, int stadiumId) throws Exception {
+        String sql = """
+                UPDATE clubs
+                SET club_name = ?, short_name = ?, founded_year = ?, manager_name = ?, sponsor_name = ?, stadium_id = ?
+                WHERE club_id = ?
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, clubName);
+            statement.setString(2, shortName);
+            statement.setInt(3, foundedYear);
+            statement.setString(4, managerName);
+            statement.setString(5, sponsorName);
+            statement.setInt(6, stadiumId);
+            statement.setInt(7, clubId);
+            statement.executeUpdate();
+        }
+    }
+
+    public void deleteClub(int clubId) throws Exception {
+        String sql = "DELETE FROM clubs WHERE club_id = ?";
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, clubId);
+            statement.executeUpdate();
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/FixtureDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.util.TableUtils;
+
+import javax.swing.table.DefaultTableModel;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+
+public class FixtureDAO {
+    public DefaultTableModel getAllFixtures() throws Exception {
+        String sql = """
+                SELECT f.fixture_id, s.season_name, f.matchweek,
+                       DATE_FORMAT(f.match_date, '%Y-%m-%d %H:%i') AS match_date,
+                       hc.club_name AS home_club,
+                       ac.club_name AS away_club,
+                       st.stadium_name,
+                       CONCAT(f.home_score, ' - ', f.away_score) AS score,
+                       f.status,
+                       f.attendance
+                FROM fixtures f
+                JOIN seasons s ON f.season_id = s.season_id
+                JOIN clubs hc ON f.home_club_id = hc.club_id
+                JOIN clubs ac ON f.away_club_id = ac.club_id
+                JOIN stadiums st ON f.stadium_id = st.stadium_id
+                ORDER BY f.match_date DESC
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            return TableUtils.toTableModel(rs);
+        }
+    }
+
+    public void insertFixture(int seasonId, int matchweek, Timestamp matchDate, int stadiumId,
+                              int homeClubId, int awayClubId, int homeScore, int awayScore,
+                              String status, int attendance) throws Exception {
+        String sql = """
+                INSERT INTO fixtures
+                (season_id, matchweek, match_date, stadium_id, home_club_id, away_club_id, home_score, away_score, status, attendance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, seasonId);
+            statement.setInt(2, matchweek);
+            statement.setTimestamp(3, matchDate);
+            statement.setInt(4, stadiumId);
+            statement.setInt(5, homeClubId);
+            statement.setInt(6, awayClubId);
+            statement.setInt(7, homeScore);
+            statement.setInt(8, awayScore);
+            statement.setString(9, status);
+            statement.setInt(10, attendance);
+            statement.executeUpdate();
+        }
+    }
+
+    public void updateFixture(int fixtureId, int seasonId, int matchweek, Timestamp matchDate, int stadiumId,
+                              int homeClubId, int awayClubId, int homeScore, int awayScore,
+                              String status, int attendance) throws Exception {
+        String sql = """
+                UPDATE fixtures
+                SET season_id = ?, matchweek = ?, match_date = ?, stadium_id = ?, home_club_id = ?, away_club_id = ?,
+                    home_score = ?, away_score = ?, status = ?, attendance = ?
+                WHERE fixture_id = ?
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, seasonId);
+            statement.setInt(2, matchweek);
+            statement.setTimestamp(3, matchDate);
+            statement.setInt(4, stadiumId);
+            statement.setInt(5, homeClubId);
+            statement.setInt(6, awayClubId);
+            statement.setInt(7, homeScore);
+            statement.setInt(8, awayScore);
+            statement.setString(9, status);
+            statement.setInt(10, attendance);
+            statement.setInt(11, fixtureId);
+            statement.executeUpdate();
+        }
+    }
+
+    public void deleteFixture(int fixtureId) throws Exception {
+        String sql = "DELETE FROM fixtures WHERE fixture_id = ?";
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, fixtureId);
+            statement.executeUpdate();
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/LookupDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.model.ComboItem;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
+
+public class LookupDAO {
+    private List<ComboItem> loadItems(String sql) throws Exception {
+        List<ComboItem> items = new ArrayList<>();
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                items.add(new ComboItem(rs.getInt(1), rs.getString(2)));
+            }
+        }
+        return items;
+    }
+
+    public List<ComboItem> getClubs() throws Exception {
+        return loadItems("SELECT club_id, club_name FROM clubs ORDER BY club_name");
+    }
+
+    public List<ComboItem> getSeasons() throws Exception {
+        return loadItems("SELECT season_id, season_name FROM seasons ORDER BY start_date DESC");
+    }
+
+    public List<ComboItem> getStadiums() throws Exception {
+        return loadItems("SELECT stadium_id, stadium_name FROM stadiums ORDER BY stadium_name");
+    }
+
+    public List<ComboItem> getPositions() throws Exception {
+        return loadItems("SELECT position_id, CONCAT(position_code, ' - ', position_name) FROM positions ORDER BY position_code");
+    }
+
+    public List<ComboItem> getPlayers() throws Exception {
+        return loadItems("SELECT player_id, CONCAT(first_name, ' ', last_name) FROM players ORDER BY last_name, first_name");
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/OfficialSquadDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.util.TableUtils;
+
+import javax.swing.table.DefaultTableModel;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
+
+public class OfficialSquadDAO {
+    public List<String> getSeasonNames() throws Exception {
+        String sql = "SELECT DISTINCT season_name FROM official_registered_squads ORDER BY source_snapshot_date DESC, season_name DESC";
+        List<String> seasons = new ArrayList<>();
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                seasons.add(rs.getString(1));
+            }
+        }
+        return seasons;
+    }
+
+    public List<String> getClubNames(String seasonName) throws Exception {
+        String sql = "SELECT DISTINCT club_name FROM official_registered_squads WHERE season_name = ? ORDER BY club_name";
+        List<String> clubs = new ArrayList<>();
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, seasonName);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    clubs.add(rs.getString(1));
+                }
+            }
+        }
+        return clubs;
+    }
+
+    public DefaultTableModel getOfficialSquads(String seasonName, String clubName, String playerKeyword) throws Exception {
+        StringBuilder sql = new StringBuilder(
+                "SELECT season_name, source_snapshot_date, club_name, player_name, " +
+                "CASE WHEN is_home_grown THEN 'Yes' ELSE 'No' END AS home_grown, squad_scope " +
+                "FROM official_registered_squads WHERE season_name = ?"
+        );
+        List<String> params = new ArrayList<>();
+        params.add(seasonName);
+
+        if (clubName != null && !clubName.isBlank() && !"All Clubs".equalsIgnoreCase(clubName)) {
+            sql.append(" AND club_name = ?");
+            params.add(clubName);
+        }
+        if (playerKeyword != null && !playerKeyword.isBlank()) {
+            sql.append(" AND player_name LIKE ?");
+            params.add("%" + playerKeyword.trim() + "%");
+        }
+        sql.append(" ORDER BY club_name, player_name");
+
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                statement.setString(i + 1, params.get(i));
+            }
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public DefaultTableModel getClubSummary(String seasonName) throws Exception {
+        String sql =
+                "SELECT club_name, COUNT(*) AS registered_senior_players, " +
+                "SUM(CASE WHEN is_home_grown THEN 1 ELSE 0 END) AS home_grown_players, " +
+                "SUM(CASE WHEN is_home_grown THEN 0 ELSE 1 END) AS non_home_grown_players " +
+                "FROM official_registered_squads WHERE season_name = ? " +
+                "GROUP BY club_name ORDER BY club_name";
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, seasonName);
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public DefaultTableModel getHomeGrownPlayers(String seasonName, String clubName) throws Exception {
+        StringBuilder sql = new StringBuilder(
+                "SELECT club_name, player_name FROM official_registered_squads " +
+                "WHERE season_name = ? AND is_home_grown = TRUE"
+        );
+        if (clubName != null && !clubName.isBlank() && !"All Clubs".equalsIgnoreCase(clubName)) {
+            sql.append(" AND club_name = ?");
+        }
+        sql.append(" ORDER BY club_name, player_name");
+
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            statement.setString(1, seasonName);
+            if (clubName != null && !clubName.isBlank() && !"All Clubs".equalsIgnoreCase(clubName)) {
+                statement.setString(2, clubName);
+            }
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public String getLatestSnapshotLabel() throws Exception {
+        String sql = "SELECT MAX(source_snapshot_date) FROM official_registered_squads";
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            if (rs.next() && rs.getDate(1) != null) {
+                return rs.getDate(1).toString();
+            }
+            return "Not loaded";
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/PlayerDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.util.TableUtils;
+
+import javax.swing.table.DefaultTableModel;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Date;
+
+public class PlayerDAO {
+    public DefaultTableModel getAllPlayers() throws Exception {
+        String sql = """
+                SELECT p.player_id,
+                       CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+                       p.date_of_birth,
+                       p.nationality,
+                       pos.position_code,
+                       p.squad_number,
+                       p.preferred_foot,
+                       c.club_name,
+                       p.market_value
+                FROM players p
+                JOIN positions pos ON p.position_id = pos.position_id
+                LEFT JOIN clubs c ON p.current_club_id = c.club_id
+                ORDER BY p.last_name, p.first_name
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            return TableUtils.toTableModel(rs);
+        }
+    }
+
+    public void insertPlayer(String firstName, String lastName, Date dateOfBirth, String nationality,
+                             int positionId, int squadNumber, String preferredFoot, Integer clubId,
+                             double marketValue) throws Exception {
+        String sql = """
+                INSERT INTO players
+                (first_name, last_name, date_of_birth, nationality, position_id, squad_number, preferred_foot, current_club_id, market_value)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, firstName);
+            statement.setString(2, lastName);
+            statement.setDate(3, dateOfBirth);
+            statement.setString(4, nationality);
+            statement.setInt(5, positionId);
+            statement.setInt(6, squadNumber);
+            statement.setString(7, preferredFoot);
+            if (clubId == null) {
+                statement.setNull(8, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(8, clubId);
+            }
+            statement.setDouble(9, marketValue);
+            statement.executeUpdate();
+        }
+    }
+
+    public void updatePlayer(int playerId, String firstName, String lastName, Date dateOfBirth, String nationality,
+                             int positionId, int squadNumber, String preferredFoot, Integer clubId,
+                             double marketValue) throws Exception {
+        String sql = """
+                UPDATE players
+                SET first_name = ?, last_name = ?, date_of_birth = ?, nationality = ?, position_id = ?,
+                    squad_number = ?, preferred_foot = ?, current_club_id = ?, market_value = ?
+                WHERE player_id = ?
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, firstName);
+            statement.setString(2, lastName);
+            statement.setDate(3, dateOfBirth);
+            statement.setString(4, nationality);
+            statement.setInt(5, positionId);
+            statement.setInt(6, squadNumber);
+            statement.setString(7, preferredFoot);
+            if (clubId == null) {
+                statement.setNull(8, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(8, clubId);
+            }
+            statement.setDouble(9, marketValue);
+            statement.setInt(10, playerId);
+            statement.executeUpdate();
+        }
+    }
+
+    public void deletePlayer(int playerId) throws Exception {
+        String sql = "DELETE FROM players WHERE player_id = ?";
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, playerId);
+            statement.executeUpdate();
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/ReportDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.util.TableUtils;
+
+import javax.swing.table.DefaultTableModel;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+public class ReportDAO {
+    public DefaultTableModel getStandings(int seasonId) throws Exception {
+        String sql = """
+                SELECT st.position_no, c.club_name, st.played, st.wins, st.draws, st.losses,
+                       st.goals_for, st.goals_against, st.goal_difference, st.points
+                FROM standings st
+                JOIN clubs c ON st.club_id = c.club_id
+                WHERE st.season_id = ?
+                ORDER BY st.position_no
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, seasonId);
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public DefaultTableModel getTopScorers(int seasonId) throws Exception {
+        String sql = """
+                SELECT CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+                       c.club_name,
+                       COUNT(*) AS goals
+                FROM match_events me
+                JOIN fixtures f ON me.fixture_id = f.fixture_id
+                JOIN players p ON me.player_id = p.player_id
+                JOIN clubs c ON me.club_id = c.club_id
+                WHERE f.season_id = ?
+                  AND me.event_type IN ('GOAL', 'PENALTY_GOAL')
+                GROUP BY p.player_id, player_name, c.club_name
+                ORDER BY goals DESC, player_name
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, seasonId);
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public DefaultTableModel getFixturesByMatchweek(int seasonId, int matchweek) throws Exception {
+        String sql = """
+                SELECT DATE_FORMAT(f.match_date, '%Y-%m-%d %H:%i') AS match_date,
+                       hc.club_name AS home_club,
+                       ac.club_name AS away_club,
+                       st.stadium_name,
+                       f.status,
+                       CONCAT(f.home_score, ' - ', f.away_score) AS score
+                FROM fixtures f
+                JOIN clubs hc ON f.home_club_id = hc.club_id
+                JOIN clubs ac ON f.away_club_id = ac.club_id
+                JOIN stadiums st ON f.stadium_id = st.stadium_id
+                WHERE f.season_id = ? AND f.matchweek = ?
+                ORDER BY f.match_date
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, seasonId);
+            statement.setInt(2, matchweek);
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public DefaultTableModel getTransfersByClub(int clubId) throws Exception {
+        String sql = """
+                SELECT CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+                       COALESCE(fc.club_name, 'Free Agent') AS from_club,
+                       tc.club_name AS to_club,
+                       t.transfer_date,
+                       t.transfer_fee,
+                       t.transfer_type,
+                       t.status
+                FROM transfers t
+                JOIN players p ON t.player_id = p.player_id
+                LEFT JOIN clubs fc ON t.from_club_id = fc.club_id
+                JOIN clubs tc ON t.to_club_id = tc.club_id
+                WHERE t.to_club_id = ? OR t.from_club_id = ?
+                ORDER BY t.transfer_date DESC
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, clubId);
+            statement.setInt(2, clubId);
+            try (ResultSet rs = statement.executeQuery()) {
+                return TableUtils.toTableModel(rs);
+            }
+        }
+    }
+
+    public int countRows(String tableName) throws Exception {
+        if (!tableName.matches("[A-Za-z_]+")) {
+            throw new IllegalArgumentException("Invalid table name.");
+        }
+        String sql = "SELECT COUNT(*) FROM " + tableName;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/dao/TransferDAO.java =====
+package com.epl.dao;
+
+import com.epl.db.DBConnection;
+import com.epl.util.TableUtils;
+
+import javax.swing.table.DefaultTableModel;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+public class TransferDAO {
+    public DefaultTableModel getAllTransfers() throws Exception {
+        String sql = """
+                SELECT t.transfer_id,
+                       CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+                       s.season_name,
+                       COALESCE(fc.club_name, 'Free Agent') AS from_club,
+                       tc.club_name AS to_club,
+                       t.transfer_date,
+                       t.transfer_fee,
+                       t.transfer_type,
+                       t.status
+                FROM transfers t
+                JOIN players p ON t.player_id = p.player_id
+                JOIN seasons s ON t.season_id = s.season_id
+                LEFT JOIN clubs fc ON t.from_club_id = fc.club_id
+                JOIN clubs tc ON t.to_club_id = tc.club_id
+                ORDER BY t.transfer_date DESC
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            return TableUtils.toTableModel(rs);
+        }
+    }
+
+    public void insertTransfer(int playerId, int seasonId, Integer fromClubId, int toClubId,
+                               Date transferDate, double transferFee, String transferType,
+                               String status) throws Exception {
+        String sql = """
+                INSERT INTO transfers
+                (player_id, season_id, from_club_id, to_club_id, transfer_date, transfer_fee, transfer_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, playerId);
+            statement.setInt(2, seasonId);
+            if (fromClubId == null) {
+                statement.setNull(3, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(3, fromClubId);
+            }
+            statement.setInt(4, toClubId);
+            statement.setDate(5, transferDate);
+            statement.setDouble(6, transferFee);
+            statement.setString(7, transferType);
+            statement.setString(8, status);
+            statement.executeUpdate();
+        }
+    }
+
+    public void updateTransfer(int transferId, int playerId, int seasonId, Integer fromClubId, int toClubId,
+                               Date transferDate, double transferFee, String transferType,
+                               String status) throws Exception {
+        String sql = """
+                UPDATE transfers
+                SET player_id = ?, season_id = ?, from_club_id = ?, to_club_id = ?, transfer_date = ?,
+                    transfer_fee = ?, transfer_type = ?, status = ?
+                WHERE transfer_id = ?
+                """;
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, playerId);
+            statement.setInt(2, seasonId);
+            if (fromClubId == null) {
+                statement.setNull(3, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(3, fromClubId);
+            }
+            statement.setInt(4, toClubId);
+            statement.setDate(5, transferDate);
+            statement.setDouble(6, transferFee);
+            statement.setString(7, transferType);
+            statement.setString(8, status);
+            statement.setInt(9, transferId);
+            statement.executeUpdate();
+        }
+    }
+
+    public void deleteTransfer(int transferId) throws Exception {
+        String sql = "DELETE FROM transfers WHERE transfer_id = ?";
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, transferId);
+            statement.executeUpdate();
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/db/DBConnection.java =====
+package com.epl.db;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Properties;
+
+public final class DBConnection {
+    private DBConnection() {
+    }
+
+    private static Properties loadProperties() throws IOException {
+        Properties properties = new Properties();
+
+        // 1) External config next to the working directory / jar
+        Path externalPath = Paths.get("db.properties");
+        if (Files.exists(externalPath)) {
+            try (InputStream input = Files.newInputStream(externalPath)) {
+                properties.load(input);
+                return properties;
+            }
+        }
+
+        // 2) Resource bundled with the application
+        try (InputStream input = DBConnection.class.getClassLoader().getResourceAsStream("db.properties")) {
+            if (input != null) {
+                properties.load(input);
+                return properties;
+            }
+        }
+
+        throw new IOException(
+                "Database configuration was not found. Place db.properties in the same folder as the JAR " +
+                "or add it to the application resources."
+        );
+    }
+
+    public static Connection getConnection() throws SQLException {
+        try {
+            Properties properties = loadProperties();
+            String url = properties.getProperty("db.url", "").trim();
+            String user = properties.getProperty("db.user", "").trim();
+            String password = properties.getProperty("db.password", "").trim();
+
+            if (url.isEmpty()) {
+                throw new IllegalStateException("db.url is missing in db.properties.");
+            }
+
+            return DriverManager.getConnection(url, user, password);
+        } catch (IOException ex) {
+            throw new IllegalStateException(ex.getMessage(), ex);
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/model/ComboItem.java =====
+package com.epl.model;
+
+public class ComboItem {
+    private final int id;
+    private final String label;
+
+    public ComboItem(int id, String label) {
+        this.id = id;
+        this.label = label == null ? "" : label;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    @Override
+    public String toString() {
+        return label;
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/ClubPanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.ClubDAO;
+import com.epl.dao.LookupDAO;
+import com.epl.model.ComboItem;
+import com.epl.util.TableUtils;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+
+public class ClubPanel extends JPanel {
+    private final ClubDAO clubDAO = new ClubDAO();
+    private final LookupDAO lookupDAO = new LookupDAO();
+
+    private final JTextField clubIdField = new JTextField();
+    private final JTextField clubNameField = new JTextField();
+    private final JTextField shortNameField = new JTextField();
+    private final JTextField foundedYearField = new JTextField();
+    private final JTextField managerField = new JTextField();
+    private final JTextField sponsorField = new JTextField();
+    private final JComboBox<ComboItem> stadiumCombo = new JComboBox<>();
+    private final JTable table = new JTable();
+
+    public ClubPanel() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        clubIdField.setEditable(false);
+        JPanel formPanel = new JPanel(new GridLayout(4, 4, 8, 8));
+        formPanel.setBorder(BorderFactory.createTitledBorder("Club Details"));
+        formPanel.add(new JLabel("Club ID"));
+        formPanel.add(clubIdField);
+        formPanel.add(new JLabel("Club Name"));
+        formPanel.add(clubNameField);
+        formPanel.add(new JLabel("Short Name"));
+        formPanel.add(shortNameField);
+        formPanel.add(new JLabel("Founded Year"));
+        formPanel.add(foundedYearField);
+        formPanel.add(new JLabel("Manager Name"));
+        formPanel.add(managerField);
+        formPanel.add(new JLabel("Sponsor Name"));
+        formPanel.add(sponsorField);
+        formPanel.add(new JLabel("Home Stadium"));
+        formPanel.add(stadiumCombo);
+
+        JButton loadButton = new JButton("Load Clubs");
+        JButton addButton = new JButton("Add Club");
+        JButton updateButton = new JButton("Update Club");
+        JButton deleteButton = new JButton("Delete Club");
+        JButton clearButton = new JButton("Clear Form");
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(loadButton);
+        buttonPanel.add(addButton);
+        buttonPanel.add(updateButton);
+        buttonPanel.add(deleteButton);
+        buttonPanel.add(clearButton);
+
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableUtils.configure(table);
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && table.getSelectedRow() >= 0) {
+                int row = table.convertRowIndexToModel(table.getSelectedRow());
+                clubIdField.setText(String.valueOf(table.getModel().getValueAt(row, 0)));
+                clubNameField.setText(String.valueOf(table.getModel().getValueAt(row, 1)));
+                shortNameField.setText(String.valueOf(table.getModel().getValueAt(row, 2)));
+                foundedYearField.setText(String.valueOf(table.getModel().getValueAt(row, 3)));
+                managerField.setText(String.valueOf(table.getModel().getValueAt(row, 4)));
+                sponsorField.setText(String.valueOf(table.getModel().getValueAt(row, 5)));
+            }
+        });
+
+        add(formPanel, BorderLayout.NORTH);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+        add(buttonPanel, BorderLayout.SOUTH);
+
+        loadLookups();
+        loadTable();
+
+        loadButton.addActionListener(e -> loadTable());
+        clearButton.addActionListener(e -> clearForm());
+        addButton.addActionListener(e -> addClub());
+        updateButton.addActionListener(e -> updateClub());
+        deleteButton.addActionListener(e -> deleteClub());
+    }
+
+    private void loadLookups() {
+        try {
+            stadiumCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getStadiums()) {
+                stadiumCombo.addItem(item);
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadTable() {
+        try {
+            table.setModel(clubDAO.getAllClubs());
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void addClub() {
+        try {
+            String clubName = UIUtils.required(clubNameField, "Club name");
+            String shortName = UIUtils.required(shortNameField, "Short name");
+            int foundedYear = UIUtils.parseInteger(UIUtils.required(foundedYearField, "Founded year"), "Founded year");
+            String managerName = UIUtils.required(managerField, "Manager name");
+            String sponsorName = sponsorField.getText().trim();
+            ComboItem stadium = (ComboItem) stadiumCombo.getSelectedItem();
+            if (stadium == null) throw new IllegalArgumentException("Please select a stadium.");
+
+            clubDAO.insertClub(clubName, shortName, foundedYear, managerName, sponsorName, stadium.getId());
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Club added successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void updateClub() {
+        try {
+            int clubId = UIUtils.parseInteger(UIUtils.required(clubIdField, "Club ID"), "Club ID");
+            String clubName = UIUtils.required(clubNameField, "Club name");
+            String shortName = UIUtils.required(shortNameField, "Short name");
+            int foundedYear = UIUtils.parseInteger(UIUtils.required(foundedYearField, "Founded year"), "Founded year");
+            String managerName = UIUtils.required(managerField, "Manager name");
+            String sponsorName = sponsorField.getText().trim();
+            ComboItem stadium = (ComboItem) stadiumCombo.getSelectedItem();
+            if (stadium == null) throw new IllegalArgumentException("Please select a stadium.");
+
+            clubDAO.updateClub(clubId, clubName, shortName, foundedYear, managerName, sponsorName, stadium.getId());
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Club updated successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void deleteClub() {
+        try {
+            int clubId = UIUtils.parseInteger(UIUtils.required(clubIdField, "Club ID"), "Club ID");
+            int confirm = JOptionPane.showConfirmDialog(this, "Delete selected club?", "Confirm", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                clubDAO.deleteClub(clubId);
+                loadTable();
+                clearForm();
+                UIUtils.showInfo(this, "Club deleted successfully.");
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void clearForm() {
+        clubIdField.setText("");
+        clubNameField.setText("");
+        shortNameField.setText("");
+        foundedYearField.setText("");
+        managerField.setText("");
+        sponsorField.setText("");
+        if (stadiumCombo.getItemCount() > 0) stadiumCombo.setSelectedIndex(0);
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/DashboardPanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.OfficialSquadDAO;
+import com.epl.dao.ReportDAO;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextArea;
+import java.awt.BorderLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+
+public class DashboardPanel extends JPanel {
+    private final JLabel clubsValue = new JLabel("0");
+    private final JLabel playersValue = new JLabel("0");
+    private final JLabel fixturesValue = new JLabel("0");
+    private final JLabel transfersValue = new JLabel("0");
+    private final JLabel officialSquadsValue = new JLabel("0");
+    private final JLabel snapshotValue = new JLabel("Not loaded");
+
+    private final ReportDAO reportDAO = new ReportDAO();
+    private final OfficialSquadDAO officialSquadDAO = new OfficialSquadDAO();
+
+    public DashboardPanel() {
+        setLayout(new BorderLayout(12, 12));
+        setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        JTextArea intro = new JTextArea(
+                "English Premier League Database Management System\n\n" +
+                "This Java Swing + MySQL application now includes the full DBMS project flow: " +
+                "clubs, players, fixtures, transfers, SQL reports, and the official Premier League " +
+                "registered squad snapshot integrated into the application UI."
+        );
+        intro.setLineWrap(true);
+        intro.setWrapStyleWord(true);
+        intro.setEditable(false);
+        intro.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 15));
+        intro.setBackground(getBackground());
+
+        JPanel statsPanel = new JPanel(new GridLayout(2, 3, 12, 12));
+        statsPanel.add(createStatCard("Clubs", clubsValue));
+        statsPanel.add(createStatCard("Players", playersValue));
+        statsPanel.add(createStatCard("Fixtures", fixturesValue));
+        statsPanel.add(createStatCard("Transfers", transfersValue));
+        statsPanel.add(createStatCard("Official Squad Entries", officialSquadsValue));
+        statsPanel.add(createStatCard("Latest Official Snapshot", snapshotValue));
+
+        JButton refreshButton = new JButton("Refresh Dashboard");
+        refreshButton.addActionListener(e -> refreshCounts());
+
+        add(intro, BorderLayout.NORTH);
+        add(statsPanel, BorderLayout.CENTER);
+        add(refreshButton, BorderLayout.SOUTH);
+
+        refreshCounts();
+    }
+
+    private JPanel createStatCard(String title, JLabel valueLabel) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(title));
+        valueLabel.setHorizontalAlignment(JLabel.CENTER);
+        valueLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, title.contains("Snapshot") ? 16 : 30));
+        panel.add(valueLabel, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void refreshCounts() {
+        try {
+            clubsValue.setText(String.valueOf(reportDAO.countRows("clubs")));
+            playersValue.setText(String.valueOf(reportDAO.countRows("players")));
+            fixturesValue.setText(String.valueOf(reportDAO.countRows("fixtures")));
+            transfersValue.setText(String.valueOf(reportDAO.countRows("transfers")));
+            officialSquadsValue.setText(String.valueOf(reportDAO.countRows("official_registered_squads")));
+            snapshotValue.setText(officialSquadDAO.getLatestSnapshotLabel());
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/FixturePanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.FixtureDAO;
+import com.epl.dao.LookupDAO;
+import com.epl.model.ComboItem;
+import com.epl.util.TableUtils;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+import java.sql.Timestamp;
+
+public class FixturePanel extends JPanel {
+    private final FixtureDAO fixtureDAO = new FixtureDAO();
+    private final LookupDAO lookupDAO = new LookupDAO();
+
+    private final JTextField fixtureIdField = new JTextField();
+    private final JTextField matchweekField = new JTextField();
+    private final JTextField matchDateField = new JTextField();
+    private final JTextField homeScoreField = new JTextField();
+    private final JTextField awayScoreField = new JTextField();
+    private final JTextField attendanceField = new JTextField();
+    private final JComboBox<ComboItem> seasonCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> stadiumCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> homeClubCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> awayClubCombo = new JComboBox<>();
+    private final JComboBox<String> statusCombo = new JComboBox<>(new String[]{"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"});
+    private final JTable table = new JTable();
+
+    public FixturePanel() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        fixtureIdField.setEditable(false);
+        JPanel formPanel = new JPanel(new GridLayout(6, 4, 8, 8));
+        formPanel.setBorder(BorderFactory.createTitledBorder("Fixture Details"));
+        formPanel.add(new JLabel("Fixture ID"));
+        formPanel.add(fixtureIdField);
+        formPanel.add(new JLabel("Season"));
+        formPanel.add(seasonCombo);
+        formPanel.add(new JLabel("Matchweek"));
+        formPanel.add(matchweekField);
+        formPanel.add(new JLabel("Match Date (YYYY-MM-DD HH:MM:SS)"));
+        formPanel.add(matchDateField);
+        formPanel.add(new JLabel("Stadium"));
+        formPanel.add(stadiumCombo);
+        formPanel.add(new JLabel("Home Club"));
+        formPanel.add(homeClubCombo);
+        formPanel.add(new JLabel("Away Club"));
+        formPanel.add(awayClubCombo);
+        formPanel.add(new JLabel("Home Score"));
+        formPanel.add(homeScoreField);
+        formPanel.add(new JLabel("Away Score"));
+        formPanel.add(awayScoreField);
+        formPanel.add(new JLabel("Status"));
+        formPanel.add(statusCombo);
+        formPanel.add(new JLabel("Attendance"));
+        formPanel.add(attendanceField);
+
+        JButton loadButton = new JButton("Load Fixtures");
+        JButton addButton = new JButton("Add Fixture");
+        JButton updateButton = new JButton("Update Fixture");
+        JButton deleteButton = new JButton("Delete Fixture");
+        JButton clearButton = new JButton("Clear Form");
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(loadButton);
+        buttonPanel.add(addButton);
+        buttonPanel.add(updateButton);
+        buttonPanel.add(deleteButton);
+        buttonPanel.add(clearButton);
+
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableUtils.configure(table);
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && table.getSelectedRow() >= 0) {
+                int row = table.convertRowIndexToModel(table.getSelectedRow());
+                fixtureIdField.setText(String.valueOf(table.getModel().getValueAt(row, 0)));
+                matchweekField.setText(String.valueOf(table.getModel().getValueAt(row, 2)));
+                matchDateField.setText(String.valueOf(table.getModel().getValueAt(row, 3)) + ":00");
+                String score = String.valueOf(table.getModel().getValueAt(row, 7));
+                String[] parts = score.split("-");
+                if (parts.length == 2) {
+                    homeScoreField.setText(parts[0].trim());
+                    awayScoreField.setText(parts[1].trim());
+                }
+                statusCombo.setSelectedItem(String.valueOf(table.getModel().getValueAt(row, 8)));
+                attendanceField.setText(String.valueOf(table.getModel().getValueAt(row, 9)));
+            }
+        });
+
+        add(formPanel, BorderLayout.NORTH);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+        add(buttonPanel, BorderLayout.SOUTH);
+
+        loadLookups();
+        loadTable();
+
+        loadButton.addActionListener(e -> loadTable());
+        clearButton.addActionListener(e -> clearForm());
+        addButton.addActionListener(e -> addFixture());
+        updateButton.addActionListener(e -> updateFixture());
+        deleteButton.addActionListener(e -> deleteFixture());
+    }
+
+    private void loadLookups() {
+        try {
+            seasonCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getSeasons()) seasonCombo.addItem(item);
+            stadiumCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getStadiums()) stadiumCombo.addItem(item);
+            homeClubCombo.removeAllItems();
+            awayClubCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getClubs()) {
+                homeClubCombo.addItem(item);
+                awayClubCombo.addItem(item);
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadTable() {
+        try {
+            table.setModel(fixtureDAO.getAllFixtures());
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void addFixture() {
+        try {
+            ComboItem season = (ComboItem) seasonCombo.getSelectedItem();
+            ComboItem stadium = (ComboItem) stadiumCombo.getSelectedItem();
+            ComboItem homeClub = (ComboItem) homeClubCombo.getSelectedItem();
+            ComboItem awayClub = (ComboItem) awayClubCombo.getSelectedItem();
+            int matchweek = UIUtils.parseInteger(UIUtils.required(matchweekField, "Matchweek"), "Matchweek");
+            Timestamp matchDate = Timestamp.valueOf(UIUtils.required(matchDateField, "Match date"));
+            int homeScore = UIUtils.parseInteger(UIUtils.required(homeScoreField, "Home score"), "Home score");
+            int awayScore = UIUtils.parseInteger(UIUtils.required(awayScoreField, "Away score"), "Away score");
+            int attendance = UIUtils.parseInteger(UIUtils.required(attendanceField, "Attendance"), "Attendance");
+            String status = String.valueOf(statusCombo.getSelectedItem());
+
+            validateFixtureSelection(season, stadium, homeClub, awayClub);
+            fixtureDAO.insertFixture(season.getId(), matchweek, matchDate, stadium.getId(), homeClub.getId(), awayClub.getId(),
+                    homeScore, awayScore, status, attendance);
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Fixture added successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void updateFixture() {
+        try {
+            int fixtureId = UIUtils.parseInteger(UIUtils.required(fixtureIdField, "Fixture ID"), "Fixture ID");
+            ComboItem season = (ComboItem) seasonCombo.getSelectedItem();
+            ComboItem stadium = (ComboItem) stadiumCombo.getSelectedItem();
+            ComboItem homeClub = (ComboItem) homeClubCombo.getSelectedItem();
+            ComboItem awayClub = (ComboItem) awayClubCombo.getSelectedItem();
+            int matchweek = UIUtils.parseInteger(UIUtils.required(matchweekField, "Matchweek"), "Matchweek");
+            Timestamp matchDate = Timestamp.valueOf(UIUtils.required(matchDateField, "Match date"));
+            int homeScore = UIUtils.parseInteger(UIUtils.required(homeScoreField, "Home score"), "Home score");
+            int awayScore = UIUtils.parseInteger(UIUtils.required(awayScoreField, "Away score"), "Away score");
+            int attendance = UIUtils.parseInteger(UIUtils.required(attendanceField, "Attendance"), "Attendance");
+            String status = String.valueOf(statusCombo.getSelectedItem());
+
+            validateFixtureSelection(season, stadium, homeClub, awayClub);
+            fixtureDAO.updateFixture(fixtureId, season.getId(), matchweek, matchDate, stadium.getId(), homeClub.getId(), awayClub.getId(),
+                    homeScore, awayScore, status, attendance);
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Fixture updated successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void deleteFixture() {
+        try {
+            int fixtureId = UIUtils.parseInteger(UIUtils.required(fixtureIdField, "Fixture ID"), "Fixture ID");
+            int confirm = JOptionPane.showConfirmDialog(this, "Delete selected fixture?", "Confirm", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                fixtureDAO.deleteFixture(fixtureId);
+                loadTable();
+                clearForm();
+                UIUtils.showInfo(this, "Fixture deleted successfully.");
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void validateFixtureSelection(ComboItem season, ComboItem stadium, ComboItem homeClub, ComboItem awayClub) {
+        if (season == null || stadium == null || homeClub == null || awayClub == null) {
+            throw new IllegalArgumentException("Season, stadium, home club, and away club are all required.");
+        }
+        if (homeClub.getId() == awayClub.getId()) {
+            throw new IllegalArgumentException("Home club and away club must be different.");
+        }
+    }
+
+    private void clearForm() {
+        fixtureIdField.setText("");
+        matchweekField.setText("");
+        matchDateField.setText("");
+        homeScoreField.setText("0");
+        awayScoreField.setText("0");
+        attendanceField.setText("0");
+        if (seasonCombo.getItemCount() > 0) seasonCombo.setSelectedIndex(0);
+        if (stadiumCombo.getItemCount() > 0) stadiumCombo.setSelectedIndex(0);
+        if (homeClubCombo.getItemCount() > 0) homeClubCombo.setSelectedIndex(0);
+        if (awayClubCombo.getItemCount() > 1) awayClubCombo.setSelectedIndex(1);
+        statusCombo.setSelectedIndex(0);
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/MainFrame.java =====
+package com.epl.ui;
+
+import javax.swing.JFrame;
+import javax.swing.JTabbedPane;
+import javax.swing.UIManager;
+
+public class MainFrame extends JFrame {
+    public MainFrame() {
+        setTitle("English Premier League DBMS Application");
+        setSize(1280, 760);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Dashboard", new DashboardPanel());
+        tabs.addTab("Clubs", new ClubPanel());
+        tabs.addTab("Players", new PlayerPanel());
+        tabs.addTab("Fixtures", new FixturePanel());
+        tabs.addTab("Transfers", new TransferPanel());
+        tabs.addTab("Official Squads", new OfficialSquadPanel());
+        tabs.addTab("Reports", new ReportPanel());
+
+        setContentPane(tabs);
+    }
+
+    public static void applySystemLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/OfficialSquadPanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.OfficialSquadDAO;
+import com.epl.util.TableUtils;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+
+public class OfficialSquadPanel extends JPanel {
+    private final OfficialSquadDAO officialSquadDAO = new OfficialSquadDAO();
+
+    private final JComboBox<String> seasonCombo = new JComboBox<>();
+    private final JComboBox<String> clubCombo = new JComboBox<>();
+    private final JTextField playerSearchField = new JTextField();
+    private final JTable table = new JTable();
+
+    public OfficialSquadPanel() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        JPanel filterPanel = new JPanel(new GridLayout(2, 4, 8, 8));
+        filterPanel.setBorder(BorderFactory.createTitledBorder("Official Current Registered Squads"));
+        filterPanel.add(new JLabel("Season"));
+        filterPanel.add(seasonCombo);
+        filterPanel.add(new JLabel("Club"));
+        filterPanel.add(clubCombo);
+        filterPanel.add(new JLabel("Player Search"));
+        filterPanel.add(playerSearchField);
+
+        JButton loadButton = new JButton("Load Official Squad");
+        JButton summaryButton = new JButton("Club Summary");
+        JButton homeGrownButton = new JButton("Home-Grown Report");
+        JButton clearButton = new JButton("Clear Search");
+
+        filterPanel.add(loadButton);
+        filterPanel.add(summaryButton);
+        filterPanel.add(homeGrownButton);
+        filterPanel.add(clearButton);
+
+        TableUtils.configure(table);
+        add(filterPanel, BorderLayout.NORTH);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+
+        seasonCombo.addActionListener(e -> loadClubs());
+
+        loadLookups();
+        loadOfficialSquads();
+
+        loadButton.addActionListener(e -> loadOfficialSquads());
+        summaryButton.addActionListener(e -> loadSummary());
+        homeGrownButton.addActionListener(e -> loadHomeGrownReport());
+        clearButton.addActionListener(e -> {
+            playerSearchField.setText("");
+            if (clubCombo.getItemCount() > 0) {
+                clubCombo.setSelectedIndex(0);
+            }
+            loadOfficialSquads();
+        });
+    }
+
+    private void loadLookups() {
+        try {
+            seasonCombo.removeAllItems();
+            for (String season : officialSquadDAO.getSeasonNames()) {
+                seasonCombo.addItem(season);
+            }
+            loadClubs();
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadClubs() {
+        try {
+            String season = getSeason();
+            clubCombo.removeAllItems();
+            clubCombo.addItem("All Clubs");
+            if (season != null) {
+                for (String club : officialSquadDAO.getClubNames(season)) {
+                    clubCombo.addItem(club);
+                }
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private String getSeason() {
+        Object selected = seasonCombo.getSelectedItem();
+        return selected == null ? null : selected.toString();
+    }
+
+    private String getClub() {
+        Object selected = clubCombo.getSelectedItem();
+        return selected == null ? "All Clubs" : selected.toString();
+    }
+
+    private void loadOfficialSquads() {
+        try {
+            String season = getSeason();
+            if (season == null) {
+                throw new IllegalArgumentException("No official squad data is loaded yet. Run the sample data SQL script.");
+            }
+            table.setModel(officialSquadDAO.getOfficialSquads(season, getClub(), playerSearchField.getText()));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadSummary() {
+        try {
+            String season = getSeason();
+            if (season == null) {
+                throw new IllegalArgumentException("Please select a season.");
+            }
+            table.setModel(officialSquadDAO.getClubSummary(season));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadHomeGrownReport() {
+        try {
+            String season = getSeason();
+            if (season == null) {
+                throw new IllegalArgumentException("Please select a season.");
+            }
+            table.setModel(officialSquadDAO.getHomeGrownPlayers(season, getClub()));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/PlayerPanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.LookupDAO;
+import com.epl.dao.PlayerDAO;
+import com.epl.model.ComboItem;
+import com.epl.util.TableUtils;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+import java.sql.Date;
+
+public class PlayerPanel extends JPanel {
+    private final PlayerDAO playerDAO = new PlayerDAO();
+    private final LookupDAO lookupDAO = new LookupDAO();
+
+    private final JTextField playerIdField = new JTextField();
+    private final JTextField firstNameField = new JTextField();
+    private final JTextField lastNameField = new JTextField();
+    private final JTextField dobField = new JTextField();
+    private final JTextField nationalityField = new JTextField();
+    private final JTextField squadNumberField = new JTextField();
+    private final JTextField marketValueField = new JTextField();
+    private final JComboBox<ComboItem> positionCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> clubCombo = new JComboBox<>();
+    private final JComboBox<String> footCombo = new JComboBox<>(new String[]{"Right", "Left", "Both"});
+    private final JTable table = new JTable();
+
+    public PlayerPanel() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        playerIdField.setEditable(false);
+        JPanel formPanel = new JPanel(new GridLayout(5, 4, 8, 8));
+        formPanel.setBorder(BorderFactory.createTitledBorder("Player Details"));
+        formPanel.add(new JLabel("Player ID"));
+        formPanel.add(playerIdField);
+        formPanel.add(new JLabel("First Name"));
+        formPanel.add(firstNameField);
+        formPanel.add(new JLabel("Last Name"));
+        formPanel.add(lastNameField);
+        formPanel.add(new JLabel("Date of Birth (YYYY-MM-DD)"));
+        formPanel.add(dobField);
+        formPanel.add(new JLabel("Nationality"));
+        formPanel.add(nationalityField);
+        formPanel.add(new JLabel("Position"));
+        formPanel.add(positionCombo);
+        formPanel.add(new JLabel("Squad Number"));
+        formPanel.add(squadNumberField);
+        formPanel.add(new JLabel("Preferred Foot"));
+        formPanel.add(footCombo);
+        formPanel.add(new JLabel("Current Club"));
+        formPanel.add(clubCombo);
+        formPanel.add(new JLabel("Market Value"));
+        formPanel.add(marketValueField);
+
+        JButton loadButton = new JButton("Load Players");
+        JButton addButton = new JButton("Add Player");
+        JButton updateButton = new JButton("Update Player");
+        JButton deleteButton = new JButton("Delete Player");
+        JButton clearButton = new JButton("Clear Form");
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(loadButton);
+        buttonPanel.add(addButton);
+        buttonPanel.add(updateButton);
+        buttonPanel.add(deleteButton);
+        buttonPanel.add(clearButton);
+
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableUtils.configure(table);
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && table.getSelectedRow() >= 0) {
+                int row = table.convertRowIndexToModel(table.getSelectedRow());
+                playerIdField.setText(String.valueOf(table.getModel().getValueAt(row, 0)));
+                String fullName = String.valueOf(table.getModel().getValueAt(row, 1));
+                String[] parts = fullName.split(" ", 2);
+                firstNameField.setText(parts.length > 0 ? parts[0] : "");
+                lastNameField.setText(parts.length > 1 ? parts[1] : "");
+                dobField.setText(String.valueOf(table.getModel().getValueAt(row, 2)));
+                nationalityField.setText(String.valueOf(table.getModel().getValueAt(row, 3)));
+                squadNumberField.setText(String.valueOf(table.getModel().getValueAt(row, 5)));
+                footCombo.setSelectedItem(String.valueOf(table.getModel().getValueAt(row, 6)));
+                marketValueField.setText(String.valueOf(table.getModel().getValueAt(row, 8)));
+            }
+        });
+
+        add(formPanel, BorderLayout.NORTH);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+        add(buttonPanel, BorderLayout.SOUTH);
+
+        loadLookups();
+        loadTable();
+
+        loadButton.addActionListener(e -> loadTable());
+        clearButton.addActionListener(e -> clearForm());
+        addButton.addActionListener(e -> addPlayer());
+        updateButton.addActionListener(e -> updatePlayer());
+        deleteButton.addActionListener(e -> deletePlayer());
+    }
+
+    private void loadLookups() {
+        try {
+            positionCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getPositions()) {
+                positionCombo.addItem(item);
+            }
+            clubCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getClubs()) {
+                clubCombo.addItem(item);
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadTable() {
+        try {
+            table.setModel(playerDAO.getAllPlayers());
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void addPlayer() {
+        try {
+            String firstName = UIUtils.required(firstNameField, "First name");
+            String lastName = UIUtils.required(lastNameField, "Last name");
+            Date dob = Date.valueOf(UIUtils.required(dobField, "Date of birth"));
+            String nationality = UIUtils.required(nationalityField, "Nationality");
+            ComboItem position = (ComboItem) positionCombo.getSelectedItem();
+            ComboItem club = (ComboItem) clubCombo.getSelectedItem();
+            String foot = String.valueOf(footCombo.getSelectedItem());
+            int squadNumber = UIUtils.parseInteger(UIUtils.required(squadNumberField, "Squad number"), "Squad number");
+            double marketValue = UIUtils.parseDouble(UIUtils.required(marketValueField, "Market value"), "Market value");
+            if (position == null) throw new IllegalArgumentException("Please select a position.");
+
+            playerDAO.insertPlayer(firstName, lastName, dob, nationality, position.getId(), squadNumber,
+                    foot, club == null ? null : club.getId(), marketValue);
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Player added successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void updatePlayer() {
+        try {
+            int playerId = UIUtils.parseInteger(UIUtils.required(playerIdField, "Player ID"), "Player ID");
+            String firstName = UIUtils.required(firstNameField, "First name");
+            String lastName = UIUtils.required(lastNameField, "Last name");
+            Date dob = Date.valueOf(UIUtils.required(dobField, "Date of birth"));
+            String nationality = UIUtils.required(nationalityField, "Nationality");
+            ComboItem position = (ComboItem) positionCombo.getSelectedItem();
+            ComboItem club = (ComboItem) clubCombo.getSelectedItem();
+            String foot = String.valueOf(footCombo.getSelectedItem());
+            int squadNumber = UIUtils.parseInteger(UIUtils.required(squadNumberField, "Squad number"), "Squad number");
+            double marketValue = UIUtils.parseDouble(UIUtils.required(marketValueField, "Market value"), "Market value");
+            if (position == null) throw new IllegalArgumentException("Please select a position.");
+
+            playerDAO.updatePlayer(playerId, firstName, lastName, dob, nationality, position.getId(), squadNumber,
+                    foot, club == null ? null : club.getId(), marketValue);
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Player updated successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void deletePlayer() {
+        try {
+            int playerId = UIUtils.parseInteger(UIUtils.required(playerIdField, "Player ID"), "Player ID");
+            int confirm = JOptionPane.showConfirmDialog(this, "Delete selected player?", "Confirm", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                playerDAO.deletePlayer(playerId);
+                loadTable();
+                clearForm();
+                UIUtils.showInfo(this, "Player deleted successfully.");
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void clearForm() {
+        playerIdField.setText("");
+        firstNameField.setText("");
+        lastNameField.setText("");
+        dobField.setText("");
+        nationalityField.setText("");
+        squadNumberField.setText("");
+        marketValueField.setText("");
+        if (positionCombo.getItemCount() > 0) positionCombo.setSelectedIndex(0);
+        if (clubCombo.getItemCount() > 0) clubCombo.setSelectedIndex(0);
+        footCombo.setSelectedIndex(0);
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/ReportPanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.LookupDAO;
+import com.epl.dao.ReportDAO;
+import com.epl.model.ComboItem;
+import com.epl.util.TableUtils;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+
+public class ReportPanel extends JPanel {
+    private final LookupDAO lookupDAO = new LookupDAO();
+    private final ReportDAO reportDAO = new ReportDAO();
+
+    private final JComboBox<ComboItem> seasonCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> clubCombo = new JComboBox<>();
+    private final JTextField matchweekField = new JTextField("1");
+    private final JTable table = new JTable();
+
+    public ReportPanel() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        JPanel topPanel = new JPanel(new GridLayout(2, 4, 8, 8));
+        topPanel.setBorder(BorderFactory.createTitledBorder("Run Reports"));
+        topPanel.add(new JLabel("Season"));
+        topPanel.add(seasonCombo);
+        topPanel.add(new JLabel("Club"));
+        topPanel.add(clubCombo);
+        topPanel.add(new JLabel("Matchweek"));
+        topPanel.add(matchweekField);
+
+        JButton standingsButton = new JButton("Standings");
+        JButton topScorersButton = new JButton("Top Scorers");
+        JButton fixturesButton = new JButton("Fixtures by Matchweek");
+        JButton transfersButton = new JButton("Transfers by Club");
+
+        topPanel.add(standingsButton);
+        topPanel.add(topScorersButton);
+        topPanel.add(fixturesButton);
+        topPanel.add(transfersButton);
+
+        TableUtils.configure(table);
+        add(topPanel, BorderLayout.NORTH);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+
+        loadLookups();
+
+        standingsButton.addActionListener(e -> runStandings());
+        topScorersButton.addActionListener(e -> runTopScorers());
+        fixturesButton.addActionListener(e -> runFixtures());
+        transfersButton.addActionListener(e -> runTransfers());
+    }
+
+    private void loadLookups() {
+        try {
+            seasonCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getSeasons()) seasonCombo.addItem(item);
+            clubCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getClubs()) clubCombo.addItem(item);
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void runStandings() {
+        try {
+            ComboItem season = requireSeason();
+            table.setModel(reportDAO.getStandings(season.getId()));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void runTopScorers() {
+        try {
+            ComboItem season = requireSeason();
+            table.setModel(reportDAO.getTopScorers(season.getId()));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void runFixtures() {
+        try {
+            ComboItem season = requireSeason();
+            int matchweek = UIUtils.parseInteger(matchweekField.getText(), "Matchweek");
+            table.setModel(reportDAO.getFixturesByMatchweek(season.getId(), matchweek));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void runTransfers() {
+        try {
+            ComboItem club = (ComboItem) clubCombo.getSelectedItem();
+            if (club == null) throw new IllegalArgumentException("Please select a club.");
+            table.setModel(reportDAO.getTransfersByClub(club.getId()));
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private ComboItem requireSeason() {
+        ComboItem season = (ComboItem) seasonCombo.getSelectedItem();
+        if (season == null) {
+            throw new IllegalArgumentException("Please select a season.");
+        }
+        return season;
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/ui/TransferPanel.java =====
+package com.epl.ui;
+
+import com.epl.dao.LookupDAO;
+import com.epl.dao.TransferDAO;
+import com.epl.model.ComboItem;
+import com.epl.util.TableUtils;
+import com.epl.util.UIUtils;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+import java.sql.Date;
+
+public class TransferPanel extends JPanel {
+    private final TransferDAO transferDAO = new TransferDAO();
+    private final LookupDAO lookupDAO = new LookupDAO();
+
+    private final JTextField transferIdField = new JTextField();
+    private final JTextField transferDateField = new JTextField();
+    private final JTextField feeField = new JTextField();
+    private final JComboBox<ComboItem> playerCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> seasonCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> fromClubCombo = new JComboBox<>();
+    private final JComboBox<ComboItem> toClubCombo = new JComboBox<>();
+    private final JComboBox<String> transferTypeCombo = new JComboBox<>(new String[]{"PERMANENT", "LOAN", "FREE_AGENT"});
+    private final JComboBox<String> statusCombo = new JComboBox<>(new String[]{"PENDING", "COMPLETED", "CANCELLED"});
+    private final JTable table = new JTable();
+
+    public TransferPanel() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        transferIdField.setEditable(false);
+        JPanel formPanel = new JPanel(new GridLayout(5, 4, 8, 8));
+        formPanel.setBorder(BorderFactory.createTitledBorder("Transfer Details"));
+        formPanel.add(new JLabel("Transfer ID"));
+        formPanel.add(transferIdField);
+        formPanel.add(new JLabel("Player"));
+        formPanel.add(playerCombo);
+        formPanel.add(new JLabel("Season"));
+        formPanel.add(seasonCombo);
+        formPanel.add(new JLabel("From Club"));
+        formPanel.add(fromClubCombo);
+        formPanel.add(new JLabel("To Club"));
+        formPanel.add(toClubCombo);
+        formPanel.add(new JLabel("Transfer Date (YYYY-MM-DD)"));
+        formPanel.add(transferDateField);
+        formPanel.add(new JLabel("Transfer Fee"));
+        formPanel.add(feeField);
+        formPanel.add(new JLabel("Transfer Type"));
+        formPanel.add(transferTypeCombo);
+        formPanel.add(new JLabel("Status"));
+        formPanel.add(statusCombo);
+
+        JButton loadButton = new JButton("Load Transfers");
+        JButton addButton = new JButton("Add Transfer");
+        JButton updateButton = new JButton("Update Transfer");
+        JButton deleteButton = new JButton("Delete Transfer");
+        JButton clearButton = new JButton("Clear Form");
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(loadButton);
+        buttonPanel.add(addButton);
+        buttonPanel.add(updateButton);
+        buttonPanel.add(deleteButton);
+        buttonPanel.add(clearButton);
+
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        TableUtils.configure(table);
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && table.getSelectedRow() >= 0) {
+                int row = table.convertRowIndexToModel(table.getSelectedRow());
+                transferIdField.setText(String.valueOf(table.getModel().getValueAt(row, 0)));
+                transferDateField.setText(String.valueOf(table.getModel().getValueAt(row, 4)));
+                feeField.setText(String.valueOf(table.getModel().getValueAt(row, 5)));
+                transferTypeCombo.setSelectedItem(String.valueOf(table.getModel().getValueAt(row, 6)));
+                statusCombo.setSelectedItem(String.valueOf(table.getModel().getValueAt(row, 7)));
+            }
+        });
+
+        add(formPanel, BorderLayout.NORTH);
+        add(new JScrollPane(table), BorderLayout.CENTER);
+        add(buttonPanel, BorderLayout.SOUTH);
+
+        loadLookups();
+        loadTable();
+
+        loadButton.addActionListener(e -> loadTable());
+        clearButton.addActionListener(e -> clearForm());
+        addButton.addActionListener(e -> addTransfer());
+        updateButton.addActionListener(e -> updateTransfer());
+        deleteButton.addActionListener(e -> deleteTransfer());
+    }
+
+    private void loadLookups() {
+        try {
+            playerCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getPlayers()) playerCombo.addItem(item);
+            seasonCombo.removeAllItems();
+            for (ComboItem item : lookupDAO.getSeasons()) seasonCombo.addItem(item);
+            fromClubCombo.removeAllItems();
+            toClubCombo.removeAllItems();
+            fromClubCombo.addItem(new ComboItem(0, "Free Agent / None"));
+            for (ComboItem item : lookupDAO.getClubs()) {
+                fromClubCombo.addItem(item);
+                toClubCombo.addItem(item);
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void loadTable() {
+        try {
+            table.setModel(transferDAO.getAllTransfers());
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void addTransfer() {
+        try {
+            ComboItem player = (ComboItem) playerCombo.getSelectedItem();
+            ComboItem season = (ComboItem) seasonCombo.getSelectedItem();
+            ComboItem fromClub = (ComboItem) fromClubCombo.getSelectedItem();
+            ComboItem toClub = (ComboItem) toClubCombo.getSelectedItem();
+            Date transferDate = Date.valueOf(UIUtils.required(transferDateField, "Transfer date"));
+            double fee = UIUtils.parseDouble(UIUtils.required(feeField, "Transfer fee"), "Transfer fee");
+            String transferType = String.valueOf(transferTypeCombo.getSelectedItem());
+            String status = String.valueOf(statusCombo.getSelectedItem());
+            validateSelection(player, season, toClub, fromClub);
+            Integer fromClubId = (fromClub == null || fromClub.getId() == 0) ? null : fromClub.getId();
+
+            transferDAO.insertTransfer(player.getId(), season.getId(), fromClubId,
+                    toClub.getId(), transferDate, fee, transferType, status);
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Transfer added successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void updateTransfer() {
+        try {
+            int transferId = UIUtils.parseInteger(UIUtils.required(transferIdField, "Transfer ID"), "Transfer ID");
+            ComboItem player = (ComboItem) playerCombo.getSelectedItem();
+            ComboItem season = (ComboItem) seasonCombo.getSelectedItem();
+            ComboItem fromClub = (ComboItem) fromClubCombo.getSelectedItem();
+            ComboItem toClub = (ComboItem) toClubCombo.getSelectedItem();
+            Date transferDate = Date.valueOf(UIUtils.required(transferDateField, "Transfer date"));
+            double fee = UIUtils.parseDouble(UIUtils.required(feeField, "Transfer fee"), "Transfer fee");
+            String transferType = String.valueOf(transferTypeCombo.getSelectedItem());
+            String status = String.valueOf(statusCombo.getSelectedItem());
+            validateSelection(player, season, toClub, fromClub);
+            Integer fromClubId = (fromClub == null || fromClub.getId() == 0) ? null : fromClub.getId();
+
+            transferDAO.updateTransfer(transferId, player.getId(), season.getId(), fromClubId,
+                    toClub.getId(), transferDate, fee, transferType, status);
+            loadTable();
+            clearForm();
+            UIUtils.showInfo(this, "Transfer updated successfully.");
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void deleteTransfer() {
+        try {
+            int transferId = UIUtils.parseInteger(UIUtils.required(transferIdField, "Transfer ID"), "Transfer ID");
+            int confirm = JOptionPane.showConfirmDialog(this, "Delete selected transfer?", "Confirm", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                transferDAO.deleteTransfer(transferId);
+                loadTable();
+                clearForm();
+                UIUtils.showInfo(this, "Transfer deleted successfully.");
+            }
+        } catch (Exception ex) {
+            UIUtils.showError(this, ex);
+        }
+    }
+
+    private void validateSelection(ComboItem player, ComboItem season, ComboItem toClub, ComboItem fromClub) {
+        if (player == null || season == null || toClub == null) {
+            throw new IllegalArgumentException("Player, season, and destination club are required.");
+        }
+        if (fromClub != null && fromClub.getId() != 0 && fromClub.getId() == toClub.getId()) {
+            throw new IllegalArgumentException("From club and to club must be different.");
+        }
+    }
+
+    private void clearForm() {
+        transferIdField.setText("");
+        transferDateField.setText("");
+        feeField.setText("0");
+        if (playerCombo.getItemCount() > 0) playerCombo.setSelectedIndex(0);
+        if (seasonCombo.getItemCount() > 0) seasonCombo.setSelectedIndex(0);
+        if (fromClubCombo.getItemCount() > 0) fromClubCombo.setSelectedIndex(0);
+        if (toClubCombo.getItemCount() > 1) toClubCombo.setSelectedIndex(1);
+        transferTypeCombo.setSelectedIndex(0);
+        statusCombo.setSelectedIndex(1);
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/util/TableUtils.java =====
+package com.epl.util;
+
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.JTableHeader;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Font;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.util.Vector;
+
+public final class TableUtils {
+    private TableUtils() {
+    }
+
+    public static DefaultTableModel toTableModel(ResultSet resultSet) throws Exception {
+        ResultSetMetaData metaData = resultSet.getMetaData();
+        int columnCount = metaData.getColumnCount();
+
+        Vector<String> columns = new Vector<>();
+        for (int i = 1; i <= columnCount; i++) {
+            columns.add(metaData.getColumnLabel(i));
+        }
+
+        Vector<Vector<Object>> rows = new Vector<>();
+        while (resultSet.next()) {
+            Vector<Object> row = new Vector<>();
+            for (int i = 1; i <= columnCount; i++) {
+                row.add(resultSet.getObject(i));
+            }
+            rows.add(row);
+        }
+
+        return new DefaultTableModel(rows, columns) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+    }
+
+    public static void configure(JTable table) {
+        table.setRowHeight(26);
+        table.setAutoCreateRowSorter(true);
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        table.setFillsViewportHeight(true);
+        table.setGridColor(new Color(220, 220, 220));
+        table.setShowHorizontalLines(true);
+        table.setShowVerticalLines(false);
+
+        JTableHeader header = table.getTableHeader();
+        header.setReorderingAllowed(false);
+        header.setFont(header.getFont().deriveFont(Font.BOLD));
+
+        DefaultTableCellRenderer leftRenderer = new DefaultTableCellRenderer();
+        leftRenderer.setHorizontalAlignment(DefaultTableCellRenderer.LEFT);
+
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(DefaultTableCellRenderer.CENTER);
+
+        table.setDefaultRenderer(Object.class, new ZebraRenderer(leftRenderer));
+        table.setDefaultRenderer(Number.class, new ZebraRenderer(centerRenderer));
+    }
+
+    private static class ZebraRenderer extends DefaultTableCellRenderer {
+        private final DefaultTableCellRenderer delegate;
+
+        private ZebraRenderer(DefaultTableCellRenderer delegate) {
+            this.delegate = delegate;
+            this.delegate.setOpaque(true);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                       boolean hasFocus, int row, int column) {
+            Component c = delegate.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            if (!isSelected) {
+                c.setBackground(row % 2 == 0 ? Color.WHITE : new Color(247, 247, 247));
+            }
+            return c;
+        }
+    }
+}
+
+
+// ===== FILE: code/app/src/com/epl/util/UIUtils.java =====
+package com.epl.util;
+
+import javax.swing.JOptionPane;
+import javax.swing.JTextField;
+import java.awt.Component;
+
+public final class UIUtils {
+    private UIUtils() {
+    }
+
+    public static String required(JTextField field, String label) {
+        String value = field.getText() == null ? "" : field.getText().trim();
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException(label + " is required.");
+        }
+        return value;
+    }
+
+    public static int parseInteger(String value, String label) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (Exception ex) {
+            throw new IllegalArgumentException(label + " must be a valid whole number.");
+        }
+    }
+
+    public static double parseDouble(String value, String label) {
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (Exception ex) {
+            throw new IllegalArgumentException(label + " must be a valid number.");
+        }
+    }
+
+    public static void showError(Component parent, Exception ex) {
+        String message = ex.getMessage();
+        if (message == null || message.isBlank()) {
+            message = ex.getClass().getSimpleName();
+        }
+        JOptionPane.showMessageDialog(parent, message, "Error", JOptionPane.ERROR_MESSAGE);
+    }
+
+    public static void showInfo(Component parent, String message) {
+        JOptionPane.showMessageDialog(parent, message, "Success", JOptionPane.INFORMATION_MESSAGE);
+    }
+}
+
+
