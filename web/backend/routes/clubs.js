@@ -47,17 +47,50 @@ router.get('/', async (req, res) => {
  */
 router.get('/:id/squad', async (req, res) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT p.player_id, CONCAT(p.first_name, ' ', p.last_name) AS player_name,
-             p.nationality, pos.position_name, pos.position_code,
-             p.squad_number, p.preferred_foot, p.market_value,
+    const clubId = req.params.id;
+
+    // Live players with current_club_id set to this club
+    const [livePlayers] = await pool.query(`
+      SELECT p.player_id,
+             CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+             p.nationality, pos.position_code, p.squad_number,
+             p.preferred_foot, p.market_value,
              COALESCE(p.player_status, 'ACTIVE') AS player_status
       FROM players p
       JOIN positions pos ON p.position_id = pos.position_id
       WHERE p.current_club_id = ?
       ORDER BY pos.position_code, p.squad_number, p.last_name
-    `, [req.params.id]);
-    res.json(rows);
+    `, [clubId]);
+
+    // Get club name to look up snapshot data
+    const [clubRows] = await pool.query('SELECT club_name FROM clubs WHERE club_id = ?', [clubId]);
+    if (!clubRows.length) return res.status(404).json({ error: 'Club not found' });
+
+    const clubName = clubRows[0].club_name;
+    const liveNames = new Set(livePlayers.map(p => p.player_name.toLowerCase()));
+
+    // Snapshot players for this club not already in the live list
+    const [snapPlayers] = await pool.query(`
+      SELECT DISTINCT player_name
+      FROM official_registered_squads
+      WHERE club_name = ?
+      ORDER BY player_name
+    `, [clubName]);
+
+    const supplemental = snapPlayers
+      .filter(p => !liveNames.has(p.player_name.toLowerCase()))
+      .map(p => ({
+        player_id: null,
+        player_name: p.player_name,
+        nationality: null,
+        position_code: null,
+        squad_number: null,
+        preferred_foot: null,
+        market_value: null,
+        player_status: 'REGISTERED'
+      }));
+
+    res.json([...livePlayers, ...supplemental]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
