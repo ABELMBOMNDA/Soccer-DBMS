@@ -1,0 +1,8 @@
+{
+  "name": "soccer-dbms",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node web/backend/server.js",
+    "postinstall": "npm install --prefix web/backend"
+  }
+}
