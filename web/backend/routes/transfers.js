@@ -95,6 +95,9 @@ router.post('/', async (req, res) => {
       'INSERT INTO transfers (player_id, season_id, from_club_id, to_club_id, transfer_date, transfer_fee, transfer_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [player_id, season_id, from_club_id || null, to_club_id, transfer_date, transfer_fee, transfer_type, status]
     );
+    if (status === 'COMPLETED') {
+      await pool.query('UPDATE players SET current_club_id = ? WHERE player_id = ?', [to_club_id, player_id]);
+    }
     res.status(201).json({ transfer_id: result.insertId, message: 'Transfer created successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -125,6 +128,9 @@ router.put('/:id', async (req, res) => {
       'UPDATE transfers SET player_id=?, season_id=?, from_club_id=?, to_club_id=?, transfer_date=?, transfer_fee=?, transfer_type=?, status=? WHERE transfer_id=?',
       [player_id, season_id, from_club_id || null, to_club_id, transfer_date, transfer_fee, transfer_type, status, req.params.id]
     );
+    if (status === 'COMPLETED') {
+      await pool.query('UPDATE players SET current_club_id = ? WHERE player_id = ?', [to_club_id, player_id]);
+    }
     res.json({ message: 'Transfer updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

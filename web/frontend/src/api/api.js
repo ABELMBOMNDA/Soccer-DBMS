@@ -8,6 +8,7 @@ const api = axios.create({
 export const clubsApi = {
   getAll: () => api.get('/clubs'),
   getById: (id) => api.get(`/clubs/${id}`),
+  getSquad: (id) => api.get(`/clubs/${id}/squad`),
   create: (data) => api.post('/clubs', data),
   update: (id, data) => api.put(`/clubs/${id}`, data),
   delete: (id) => api.delete(`/clubs/${id}`),

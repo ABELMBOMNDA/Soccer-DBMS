@@ -45,6 +45,24 @@ router.get('/', async (req, res) => {
  *       404:
  *         description: Club not found
  */
+router.get('/:id/squad', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT p.player_id, CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+             p.nationality, pos.position_name, pos.position_code,
+             p.squad_number, p.preferred_foot, p.market_value,
+             COALESCE(p.player_status, 'ACTIVE') AS player_status
+      FROM players p
+      JOIN positions pos ON p.position_id = pos.position_id
+      WHERE p.current_club_id = ?
+      ORDER BY pos.position_code, p.squad_number, p.last_name
+    `, [req.params.id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const [rows] = await pool.query(`
