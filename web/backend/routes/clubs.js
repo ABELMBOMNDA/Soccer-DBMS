@@ -49,10 +49,15 @@ router.get('/:id/squad', async (req, res) => {
   try {
     const clubId = req.params.id;
 
-    // Live players with current_club_id set to this club
+    const [clubRows] = await pool.query('SELECT club_name FROM clubs WHERE club_id = ?', [clubId]);
+    if (!clubRows.length) return res.status(404).json({ error: 'Club not found' });
+    const clubName = clubRows[0].club_name;
+
+    // Live players linked to this club via current_club_id
     const [livePlayers] = await pool.query(`
       SELECT p.player_id,
              CONCAT(p.first_name, ' ', p.last_name) AS player_name,
+             p.first_name, p.last_name,
              p.nationality, pos.position_code, p.squad_number,
              p.preferred_foot, p.market_value,
              COALESCE(p.player_status, 'ACTIVE') AS player_status
@@ -62,23 +67,26 @@ router.get('/:id/squad', async (req, res) => {
       ORDER BY pos.position_code, p.squad_number, p.last_name
     `, [clubId]);
 
-    // Get club name to look up snapshot data
-    const [clubRows] = await pool.query('SELECT club_name FROM clubs WHERE club_id = ?', [clubId]);
-    if (!clubRows.length) return res.status(404).json({ error: 'Club not found' });
-
-    const clubName = clubRows[0].club_name;
-    const liveNames = new Set(livePlayers.map(p => p.player_name.toLowerCase()));
-
-    // Snapshot players for this club not already in the live list
+    // Snapshot players for this club (complete registered squad)
     const [snapPlayers] = await pool.query(`
-      SELECT DISTINCT player_name
+      SELECT DISTINCT player_name, is_home_grown, squad_scope
       FROM official_registered_squads
       WHERE club_name = ?
       ORDER BY player_name
     `, [clubName]);
 
+    // Build a set of last names from live players for deduplication
+    // Snapshot format is "Last, First" — extract the last name part
+    const liveLastNames = new Set(livePlayers.map(p => p.last_name.toLowerCase()));
+    const livePlayerNames = new Set(livePlayers.map(p => p.player_name.toLowerCase()));
+
     const supplemental = snapPlayers
-      .filter(p => !liveNames.has(p.player_name.toLowerCase()))
+      .filter(p => {
+        const nameLower = p.player_name.toLowerCase();
+        // "Last, First" format — last name is before the comma
+        const snapLastName = nameLower.includes(',') ? nameLower.split(',')[0].trim() : nameLower;
+        return !liveLastNames.has(snapLastName) && !livePlayerNames.has(nameLower);
+      })
       .map(p => ({
         player_id: null,
         player_name: p.player_name,
