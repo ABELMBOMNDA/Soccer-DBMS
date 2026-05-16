@@ -35,6 +35,7 @@ export const transfersApi = {
   getById: (id) => api.get(`/transfers/${id}`),
   create: (data) => api.post('/transfers', data),
   update: (id, data) => api.put(`/transfers/${id}`, data),
+  cancel: (id) => api.patch(`/transfers/${id}/cancel`),
   delete: (id) => api.delete(`/transfers/${id}`),
 };
 

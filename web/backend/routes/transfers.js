@@ -130,10 +130,30 @@ router.put('/:id', async (req, res) => {
     );
     if (status === 'COMPLETED') {
       await pool.query('UPDATE players SET current_club_id = ? WHERE player_id = ?', [to_club_id, player_id]);
+    } else if (status === 'CANCELLED') {
+      await pool.query('UPDATE players SET current_club_id = ? WHERE player_id = ?', [from_club_id || null, player_id]);
     }
     res.json({ message: 'Transfer updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/:id/cancel', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[transfer]] = await conn.query('SELECT player_id, from_club_id FROM transfers WHERE transfer_id = ?', [req.params.id]);
+    if (!transfer) { await conn.rollback(); return res.status(404).json({ error: 'Transfer not found' }); }
+    await conn.query("UPDATE transfers SET status = 'CANCELLED' WHERE transfer_id = ?", [req.params.id]);
+    await conn.query('UPDATE players SET current_club_id = ? WHERE player_id = ?', [transfer.from_club_id || null, transfer.player_id]);
+    await conn.commit();
+    res.json({ message: 'Transfer cancelled successfully' });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 

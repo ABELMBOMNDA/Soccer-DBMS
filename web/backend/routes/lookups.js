@@ -90,7 +90,7 @@ router.get('/positions', async (req, res) => {
  */
 router.get('/players', async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT player_id, CONCAT(first_name, ' ', last_name) AS player_name FROM players ORDER BY last_name, first_name");
+    const [rows] = await pool.query("SELECT player_id, CONCAT(first_name, ' ', last_name) AS player_name, current_club_id FROM players ORDER BY last_name, first_name");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

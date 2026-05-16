@@ -290,6 +290,8 @@ button {
 .btn-secondary:hover { background: #495057; }
 .btn-success { background: #2d6a4f; color: #fff; box-shadow: 0 2px 6px rgba(45,106,79,0.3); }
 .btn-success:hover { background: #1b4332; }
+.btn-warning { background: #e67e22; color: #fff; }
+.btn-warning:hover { background: #ca6f1e; }
 .btn-danger { background: #dc3545; color: #fff; }
 .btn-danger:hover { background: #b02a37; }
 .btn-outline { background: transparent; border: 1.5px solid #dee2e6; color: #495057; }

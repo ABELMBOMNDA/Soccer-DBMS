@@ -47,6 +47,17 @@ export default function Transfers() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const handlePlayerChange = (playerId) => {
+    set('player_id', playerId);
+    if (!playerId) return;
+    const player = players.find(p => String(p.player_id) === String(playerId));
+    if (player && player.current_club_id) {
+      set('from_club_id', String(player.current_club_id));
+    } else {
+      set('from_club_id', '');
+    }
+  };
+
   const handleSelect = (t) => {
     setSelected(t.transfer_id);
     setForm({
@@ -88,6 +99,15 @@ export default function Transfers() {
     } catch (e) { notify(e.response?.data?.error || 'Error updating transfer', 'error'); }
   };
 
+  const handleCancel = async () => {
+    if (!selected) return notify('Select a transfer to cancel', 'error');
+    if (!confirm('Cancel this transfer? The player will be returned to their previous club.')) return;
+    try {
+      await transfersApi.cancel(selected);
+      notify('Transfer cancelled'); handleClear(); load();
+    } catch (e) { notify(e.response?.data?.error || 'Error cancelling transfer', 'error'); }
+  };
+
   const handleDelete = async () => {
     if (!selected) return notify('Select a transfer to delete', 'error');
     if (!confirm('Delete this transfer?')) return;
@@ -107,7 +127,7 @@ export default function Transfers() {
           <div className="form-group"><label>ID</label><input readOnly value={form.transfer_id} /></div>
           <div className="form-group">
             <label>Player *</label>
-            <select value={form.player_id} onChange={e => set('player_id', e.target.value)}>
+            <select value={form.player_id} onChange={e => handlePlayerChange(e.target.value)}>
               <option value="">Select player</option>
               {players.map(p => <option key={p.player_id} value={p.player_id}>{p.player_name}</option>)}
             </select>
@@ -151,6 +171,7 @@ export default function Transfers() {
         <div className="btn-row">
           <button className="btn-primary" onClick={handleAdd}>Add Transfer</button>
           <button className="btn-success" onClick={handleUpdate}>Update Transfer</button>
+          <button className="btn-warning" onClick={handleCancel}>Cancel Transfer</button>
           <button className="btn-danger" onClick={handleDelete}>Delete Transfer</button>
           <button className="btn-outline" onClick={handleClear}>Clear Form</button>
           <button className="btn-secondary" onClick={load}>Reload</button>
